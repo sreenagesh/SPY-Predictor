@@ -8,3 +8,93 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface OhlcvBar {
+  /** ISO date string */
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface SpyDataResponse {
+  symbol: string;
+  period: string;
+  bars: OhlcvBar[];
+  currentPrice: number;
+  /** Absolute price change from first to last bar */
+  priceChange: number;
+  /** Percentage price change from first to last bar */
+  priceChangePct: number;
+}
+
+export type IndicatorValueSignal =
+  (typeof IndicatorValueSignal)[keyof typeof IndicatorValueSignal];
+
+export const IndicatorValueSignal = {
+  bullish: "bullish",
+  bearish: "bearish",
+  neutral: "neutral",
+} as const;
+
+export interface IndicatorValue {
+  name: string;
+  value: number;
+  signal: IndicatorValueSignal;
+  description: string;
+}
+
+export type SpyPredictionResponsePrediction =
+  (typeof SpyPredictionResponsePrediction)[keyof typeof SpyPredictionResponsePrediction];
+
+export const SpyPredictionResponsePrediction = {
+  bullish: "bullish",
+  bearish: "bearish",
+  neutral: "neutral",
+} as const;
+
+export interface PriceTargets {
+  support: number;
+  resistance: number;
+  /** Estimated upside target */
+  upside: number;
+  /** Estimated downside target */
+  downside: number;
+}
+
+export interface SpyPredictionResponse {
+  symbol: string;
+  timestamp: string;
+  currentPrice: number;
+  prediction: SpyPredictionResponsePrediction;
+  /** Confidence score 0-100 */
+  confidence: number;
+  /** Human-readable summary of the prediction rationale */
+  summary: string;
+  indicators: IndicatorValue[];
+  priceTargets: PriceTargets;
+}
+
+export type GetSpyDataParams = {
+  /**
+   * Time period for historical data
+   */
+  period?: GetSpyDataPeriod;
+};
+
+export type GetSpyDataPeriod =
+  (typeof GetSpyDataPeriod)[keyof typeof GetSpyDataPeriod];
+
+export const GetSpyDataPeriod = {
+  "1mo": "1mo",
+  "3mo": "3mo",
+  "6mo": "6mo",
+  "1y": "1y",
+  "2y": "2y",
+} as const;

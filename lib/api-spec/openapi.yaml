@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: spy
+    description: SPY ETF market data and prediction operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /spy/data:
+    get:
+      operationId: getSpyData
+      tags: [spy]
+      summary: Get SPY historical price data
+      description: Returns historical OHLCV data for SPY ETF with configurable period
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1mo, 3mo, 6mo, 1y, 2y]
+            default: 6mo
+          description: Time period for historical data
+      responses:
+        "200":
+          description: Historical price data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpyDataResponse"
+        "500":
+          description: Error fetching data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /spy/prediction:
+    get:
+      operationId: getSpyPrediction
+      tags: [spy]
+      summary: Get SPY movement prediction
+      description: Returns technical indicator analysis and directional prediction for SPY ETF
+      responses:
+        "200":
+          description: Prediction based on technical analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpyPredictionResponse"
+        "500":
+          description: Error computing prediction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +82,127 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    OhlcvBar:
+      type: object
+      properties:
+        date:
+          type: string
+          description: ISO date string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+      required:
+        - date
+        - open
+        - high
+        - low
+        - close
+        - volume
+    SpyDataResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        period:
+          type: string
+        bars:
+          type: array
+          items:
+            $ref: "#/components/schemas/OhlcvBar"
+        currentPrice:
+          type: number
+        priceChange:
+          type: number
+          description: Absolute price change from first to last bar
+        priceChangePct:
+          type: number
+          description: Percentage price change from first to last bar
+      required:
+        - symbol
+        - period
+        - bars
+        - currentPrice
+        - priceChange
+        - priceChangePct
+    IndicatorValue:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        signal:
+          type: string
+          enum: [bullish, bearish, neutral]
+        description:
+          type: string
+      required:
+        - name
+        - value
+        - signal
+        - description
+    SpyPredictionResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        timestamp:
+          type: string
+        currentPrice:
+          type: number
+        prediction:
+          type: string
+          enum: [bullish, bearish, neutral]
+        confidence:
+          type: number
+          description: Confidence score 0-100
+        summary:
+          type: string
+          description: Human-readable summary of the prediction rationale
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndicatorValue"
+        priceTargets:
+          $ref: "#/components/schemas/PriceTargets"
+      required:
+        - symbol
+        - timestamp
+        - currentPrice
+        - prediction
+        - confidence
+        - summary
+        - indicators
+        - priceTargets
+    PriceTargets:
+      type: object
+      properties:
+        support:
+          type: number
+        resistance:
+          type: number
+        upside:
+          type: number
+          description: Estimated upside target
+        downside:
+          type: number
+          description: Estimated downside target
+      required:
+        - support
+        - resistance
+        - upside
+        - downside

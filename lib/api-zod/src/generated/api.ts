@@ -14,3 +14,67 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns historical OHLCV data for SPY ETF with configurable period
+ * @summary Get SPY historical price data
+ */
+export const getSpyDataQueryPeriodDefault = `6mo`;
+
+export const GetSpyDataQueryParams = zod.object({
+  period: zod
+    .enum(["1mo", "3mo", "6mo", "1y", "2y"])
+    .default(getSpyDataQueryPeriodDefault)
+    .describe("Time period for historical data"),
+});
+
+export const GetSpyDataResponse = zod.object({
+  symbol: zod.string(),
+  period: zod.string(),
+  bars: zod.array(
+    zod.object({
+      date: zod.string().describe("ISO date string"),
+      open: zod.number(),
+      high: zod.number(),
+      low: zod.number(),
+      close: zod.number(),
+      volume: zod.number(),
+    }),
+  ),
+  currentPrice: zod.number(),
+  priceChange: zod
+    .number()
+    .describe("Absolute price change from first to last bar"),
+  priceChangePct: zod
+    .number()
+    .describe("Percentage price change from first to last bar"),
+});
+
+/**
+ * Returns technical indicator analysis and directional prediction for SPY ETF
+ * @summary Get SPY movement prediction
+ */
+export const GetSpyPredictionResponse = zod.object({
+  symbol: zod.string(),
+  timestamp: zod.string(),
+  currentPrice: zod.number(),
+  prediction: zod.enum(["bullish", "bearish", "neutral"]),
+  confidence: zod.number().describe("Confidence score 0-100"),
+  summary: zod
+    .string()
+    .describe("Human-readable summary of the prediction rationale"),
+  indicators: zod.array(
+    zod.object({
+      name: zod.string(),
+      value: zod.number(),
+      signal: zod.enum(["bullish", "bearish", "neutral"]),
+      description: zod.string(),
+    }),
+  ),
+  priceTargets: zod.object({
+    support: zod.number(),
+    resistance: zod.number(),
+    upside: zod.number().describe("Estimated upside target"),
+    downside: zod.number().describe("Estimated downside target"),
+  }),
+});

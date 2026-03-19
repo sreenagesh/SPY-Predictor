@@ -13,7 +13,13 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  GetSpyDataParams,
+  HealthStatus,
+  SpyDataResponse,
+  SpyPredictionResponse,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
 import type { ErrorType } from "../custom-fetch";
@@ -92,6 +98,177 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns historical OHLCV data for SPY ETF with configurable period
+ * @summary Get SPY historical price data
+ */
+export const getGetSpyDataUrl = (params?: GetSpyDataParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/spy/data?${stringifiedParams}`
+    : `/api/spy/data`;
+};
+
+export const getSpyData = async (
+  params?: GetSpyDataParams,
+  options?: RequestInit,
+): Promise<SpyDataResponse> => {
+  return customFetch<SpyDataResponse>(getGetSpyDataUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSpyDataQueryKey = (params?: GetSpyDataParams) => {
+  return [`/api/spy/data`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetSpyDataQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSpyData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetSpyDataParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSpyData>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSpyDataQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSpyData>>> = ({
+    signal,
+  }) => getSpyData(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyData>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSpyDataQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSpyData>>
+>;
+export type GetSpyDataQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get SPY historical price data
+ */
+
+export function useGetSpyData<
+  TData = Awaited<ReturnType<typeof getSpyData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetSpyDataParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSpyData>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSpyDataQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns technical indicator analysis and directional prediction for SPY ETF
+ * @summary Get SPY movement prediction
+ */
+export const getGetSpyPredictionUrl = () => {
+  return `/api/spy/prediction`;
+};
+
+export const getSpyPrediction = async (
+  options?: RequestInit,
+): Promise<SpyPredictionResponse> => {
+  return customFetch<SpyPredictionResponse>(getGetSpyPredictionUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSpyPredictionQueryKey = () => {
+  return [`/api/spy/prediction`] as const;
+};
+
+export const getGetSpyPredictionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSpyPrediction>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyPrediction>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSpyPredictionQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSpyPrediction>>
+  > = ({ signal }) => getSpyPrediction({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyPrediction>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSpyPredictionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSpyPrediction>>
+>;
+export type GetSpyPredictionQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get SPY movement prediction
+ */
+
+export function useGetSpyPrediction<
+  TData = Awaited<ReturnType<typeof getSpyPrediction>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyPrediction>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSpyPredictionQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

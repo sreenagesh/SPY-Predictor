@@ -1,0 +1,12 @@
+packages:
+  "recharts": "For the historical price chart and data visualization"
+  "framer-motion": "For premium dashboard animations and micro-interactions"
+  "date-fns": "For formatting chart dates and timestamps"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes safely"
+  "lucide-react": "For beautiful UI icons"
+
+notes:
+  - App is forced into dark mode for a professional financial aesthetic
+  - Polling interval for prediction data is set to 5 minutes
+  - Recharts is used for the interactive OHLCV/line chart
