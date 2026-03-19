@@ -6,6 +6,7 @@ import { PriceChart } from "@/components/price-chart";
 import { PredictionWidget } from "@/components/prediction-widget";
 import { IndicatorsGrid } from "@/components/indicators-grid";
 import { PriceTargetsCard } from "@/components/price-targets";
+import { ScalpTargetsCard } from "@/components/scalp-targets";
 import { LoadingSpinner } from "@/components/ui-elements";
 
 export default function Dashboard() {
@@ -108,6 +109,21 @@ export default function Dashboard() {
               targets={prediction.priceTargets} 
               currentPrice={prediction.currentPrice} 
             />
+          )}
+
+          {/* Scalp Targets */}
+          {prediction?.scalpTargets && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="col-span-1 lg:col-span-12"
+            >
+              <ScalpTargetsCard
+                scalpTargets={prediction.scalpTargets as any}
+                currentPrice={prediction.currentPrice}
+              />
+            </motion.div>
           )}
         </div>
       )}

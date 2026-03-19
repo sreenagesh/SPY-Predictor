@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { IndicatorValue } from "./indicatorValue";
+import type { IntradayScalpTargets } from "./intradayScalpTargets";
 import type { PriceTargets } from "./priceTargets";
 import type { SpyPredictionResponsePrediction } from "./spyPredictionResponsePrediction";
 
@@ -20,4 +21,5 @@ export interface SpyPredictionResponse {
   summary: string;
   indicators: IndicatorValue[];
   priceTargets: PriceTargets;
+  scalpTargets: IntradayScalpTargets;
 }

@@ -120,3 +120,91 @@ export function computeBollingerBands(closes: number[], period = 20): BollingerB
   const percentB = upper === lower ? 0.5 : (current - lower) / (upper - lower);
   return { upper, middle: mean, lower, percentB };
 }
+
+export function computeAtr(bars: OhlcvBar[], period = 14): number {
+  if (bars.length < 2) return bars[0]?.high - bars[0]?.low || 1;
+  const trValues: number[] = [];
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevClose = bars[i - 1].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trValues.push(tr);
+  }
+  const recentTr = trValues.slice(-period);
+  return recentTr.reduce((a, b) => a + b, 0) / recentTr.length;
+}
+
+export interface ScalpSetup {
+  entry: number;
+  t1: number;
+  t2: number;
+  stopLoss: number;
+  riskReward: number;
+}
+
+export interface IntradayScalpTargets {
+  bias: "long" | "short" | "neutral";
+  atr: number;
+  estimatedDayRange: number;
+  longSetup: ScalpSetup;
+  shortSetup: ScalpSetup;
+  notes: string;
+}
+
+export function computeScalpTargets(
+  bars: OhlcvBar[],
+  prediction: "bullish" | "bearish" | "neutral",
+  rsi: number,
+  macdHistogram: number
+): IntradayScalpTargets {
+  const atr = computeAtr(bars, 14);
+  const currentPrice = bars[bars.length - 1].close;
+
+  const intradayRangeFactor = 0.45;
+  const estimatedDayRange = atr * intradayRangeFactor;
+
+  const t1Size = estimatedDayRange * 0.35;
+  const t2Size = estimatedDayRange * 0.65;
+  const stopSize = estimatedDayRange * 0.22;
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const longEntry = round2(currentPrice);
+  const longT1 = round2(longEntry + t1Size);
+  const longT2 = round2(longEntry + t2Size);
+  const longStop = round2(longEntry - stopSize);
+  const longRR = round2(t1Size / stopSize);
+
+  const shortEntry = round2(currentPrice);
+  const shortT1 = round2(shortEntry - t1Size);
+  const shortT2 = round2(shortEntry - t2Size);
+  const shortStop = round2(shortEntry + stopSize);
+  const shortRR = round2(t1Size / stopSize);
+
+  let bias: "long" | "short" | "neutral";
+  const rsiMomentum = rsi < 40 ? "oversold" : rsi > 60 ? "overbought" : "neutral";
+
+  if (prediction === "bullish" || (prediction === "neutral" && rsi < 42 && macdHistogram > -0.5)) {
+    bias = "long";
+  } else if (prediction === "bearish" || (prediction === "neutral" && rsi > 58 && macdHistogram < 0.5)) {
+    bias = "short";
+  } else {
+    bias = "neutral";
+  }
+
+  const noteMap: Record<string, string> = {
+    long: `Bias skews long. ${rsiMomentum === "oversold" ? "RSI approaching oversold — watch for bounce entries on dips toward support." : "Look for pullbacks to VWAP or prior support as scalp long entries."}  ATR-based T1 at ${longT1.toFixed(2)}, T2 at ${longT2.toFixed(2)}, stop at ${longStop.toFixed(2)}.`,
+    short: `Bias skews short. ${rsiMomentum === "overbought" ? "RSI elevated — look for rejection at resistance or failed breakout for entries." : "Watch for pops into resistance to fade intraday."}  ATR-based T1 at ${shortT1.toFixed(2)}, T2 at ${shortT2.toFixed(2)}, stop at ${shortStop.toFixed(2)}.`,
+    neutral: `No clear intraday edge. Range-bound conditions expected. Consider fading extremes: long near ${longStop.toFixed(2)} support, short near ${shortStop.toFixed(2)} resistance. Reduce size and wait for confirmation.`,
+  };
+
+  return {
+    bias,
+    atr: round2(atr),
+    estimatedDayRange: round2(estimatedDayRange),
+    longSetup: { entry: longEntry, t1: longT1, t2: longT2, stopLoss: longStop, riskReward: longRR },
+    shortSetup: { entry: shortEntry, t1: shortT1, t2: shortT2, stopLoss: shortStop, riskReward: shortRR },
+    notes: noteMap[bias],
+  };
+}

@@ -68,6 +68,38 @@ export interface PriceTargets {
   downside: number;
 }
 
+export type IntradayScalpTargetsBias =
+  (typeof IntradayScalpTargetsBias)[keyof typeof IntradayScalpTargetsBias];
+
+export const IntradayScalpTargetsBias = {
+  long: "long",
+  short: "short",
+  neutral: "neutral",
+} as const;
+
+export interface ScalpSetup {
+  entry: number;
+  /** First take-profit target */
+  t1: number;
+  /** Second take-profit target */
+  t2: number;
+  stopLoss: number;
+  /** Risk/reward ratio */
+  riskReward: number;
+}
+
+export interface IntradayScalpTargets {
+  bias: IntradayScalpTargetsBias;
+  /** Daily ATR used for intraday range estimation */
+  atr: number;
+  /** Estimated intraday price range based on ATR */
+  estimatedDayRange: number;
+  longSetup: ScalpSetup;
+  shortSetup: ScalpSetup;
+  /** Brief rationale for today's scalp bias */
+  notes: string;
+}
+
 export interface SpyPredictionResponse {
   symbol: string;
   timestamp: string;
@@ -79,6 +111,7 @@ export interface SpyPredictionResponse {
   summary: string;
   indicators: IndicatorValue[];
   priceTargets: PriceTargets;
+  scalpTargets: IntradayScalpTargets;
 }
 
 export type GetSpyDataParams = {

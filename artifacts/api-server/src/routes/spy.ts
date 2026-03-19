@@ -9,6 +9,7 @@ import {
   computeSma,
   computeMacd,
   computeBollingerBands,
+  computeScalpTargets,
 } from "../lib/spy-data.js";
 
 const router: IRouter = Router();
@@ -154,6 +155,8 @@ router.get("/spy/prediction", async (_req, res): Promise<void> => {
       },
     ];
 
+    const scalpTargets = computeScalpTargets(bars, prediction, rsi, macd.histogram);
+
     const data = GetSpyPredictionResponse.parse({
       symbol: "SPY",
       timestamp: new Date().toISOString(),
@@ -168,6 +171,7 @@ router.get("/spy/prediction", async (_req, res): Promise<void> => {
         upside: Math.round(upside * 100) / 100,
         downside: Math.round(downside * 100) / 100,
       },
+      scalpTargets,
     });
 
     res.json(data);

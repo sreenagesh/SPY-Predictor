@@ -179,6 +179,8 @@ components:
             $ref: "#/components/schemas/IndicatorValue"
         priceTargets:
           $ref: "#/components/schemas/PriceTargets"
+        scalpTargets:
+          $ref: "#/components/schemas/IntradayScalpTargets"
       required:
         - symbol
         - timestamp
@@ -188,6 +190,7 @@ components:
         - summary
         - indicators
         - priceTargets
+        - scalpTargets
     PriceTargets:
       type: object
       properties:
@@ -206,3 +209,51 @@ components:
         - resistance
         - upside
         - downside
+    ScalpSetup:
+      type: object
+      properties:
+        entry:
+          type: number
+        t1:
+          type: number
+          description: First take-profit target
+        t2:
+          type: number
+          description: Second take-profit target
+        stopLoss:
+          type: number
+        riskReward:
+          type: number
+          description: Risk/reward ratio
+      required:
+        - entry
+        - t1
+        - t2
+        - stopLoss
+        - riskReward
+    IntradayScalpTargets:
+      type: object
+      properties:
+        bias:
+          type: string
+          enum: [long, short, neutral]
+        atr:
+          type: number
+          description: Daily ATR used for intraday range estimation
+        estimatedDayRange:
+          type: number
+          description: Estimated intraday price range based on ATR
+        longSetup:
+          $ref: "#/components/schemas/ScalpSetup"
+        shortSetup:
+          $ref: "#/components/schemas/ScalpSetup"
+        notes:
+          type: string
+          description: Brief rationale for today's scalp bias
+      required:
+        - bias
+        - atr
+        - estimatedDayRange
+        - longSetup
+        - shortSetup
+        - notes

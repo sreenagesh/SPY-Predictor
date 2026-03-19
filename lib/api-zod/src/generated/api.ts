@@ -77,4 +77,26 @@ export const GetSpyPredictionResponse = zod.object({
     upside: zod.number().describe("Estimated upside target"),
     downside: zod.number().describe("Estimated downside target"),
   }),
+  scalpTargets: zod.object({
+    bias: zod.enum(["long", "short", "neutral"]),
+    atr: zod.number().describe("Daily ATR used for intraday range estimation"),
+    estimatedDayRange: zod
+      .number()
+      .describe("Estimated intraday price range based on ATR"),
+    longSetup: zod.object({
+      entry: zod.number(),
+      t1: zod.number().describe("First take-profit target"),
+      t2: zod.number().describe("Second take-profit target"),
+      stopLoss: zod.number(),
+      riskReward: zod.number().describe("Risk\/reward ratio"),
+    }),
+    shortSetup: zod.object({
+      entry: zod.number(),
+      t1: zod.number().describe("First take-profit target"),
+      t2: zod.number().describe("Second take-profit target"),
+      stopLoss: zod.number(),
+      riskReward: zod.number().describe("Risk\/reward ratio"),
+    }),
+    notes: zod.string().describe("Brief rationale for today's scalp bias"),
+  }),
 });
