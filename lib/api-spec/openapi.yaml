@@ -54,6 +54,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /spy/options:
+    get:
+      operationId: getSpyOptions
+      tags: [spy]
+      summary: Get highest-probability CALL or PUT signal
+      description: Returns a full options trade recommendation with entry, stop loss, and targets
+      responses:
+        "200":
+          description: Options trade signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionsSignalResponse"
+        "500":
+          description: Error computing signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /spy/prediction:
     get:
       operationId: getSpyPrediction
@@ -257,3 +276,97 @@ components:
         - longSetup
         - shortSetup
         - notes
+    OptionsTradeSetup:
+      type: object
+      properties:
+        side:
+          type: string
+          enum: [CALL, PUT]
+        strike:
+          type: number
+        expiration:
+          type: string
+        daysToExpiry:
+          type: number
+        premiumEntry:
+          type: number
+          description: Option ask price to buy at
+        premiumStop:
+          type: number
+          description: Exit if premium falls to this level (capital preservation)
+        premiumT1:
+          type: number
+          description: First take-profit on premium (2x)
+        premiumT2:
+          type: number
+          description: Second take-profit on premium (3.5x)
+        underlyingEntry:
+          type: number
+        underlyingStop:
+          type: number
+        underlyingT1:
+          type: number
+        underlyingT2:
+          type: number
+        impliedVolatility:
+          type: ["number", "null"]
+        delta:
+          type: ["number", "null"]
+        openInterest:
+          type: ["number", "null"]
+        volume:
+          type: ["number", "null"]
+      required:
+        - side
+        - strike
+        - expiration
+        - daysToExpiry
+        - premiumEntry
+        - premiumStop
+        - premiumT1
+        - premiumT2
+        - underlyingEntry
+        - underlyingStop
+        - underlyingT1
+        - underlyingT2
+        - impliedVolatility
+        - delta
+        - openInterest
+        - volume
+    OptionsSignalResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        timestamp:
+          type: string
+        currentPrice:
+          type: number
+        signal:
+          type: string
+          enum: [CALL, PUT, WAIT]
+        confidence:
+          type: number
+        reasoning:
+          type: string
+        keyFactors:
+          type: array
+          items:
+            type: string
+        technicalScore:
+          type: number
+          description: Composite bull/bear score (-100 to +100, positive = bullish)
+        trade:
+          oneOf:
+            - $ref: "#/components/schemas/OptionsTradeSetup"
+            - type: "null"
+      required:
+        - symbol
+        - timestamp
+        - currentPrice
+        - signal
+        - confidence
+        - reasoning
+        - keyFactors
+        - technicalScore
+        - trade

@@ -114,6 +114,63 @@ export interface SpyPredictionResponse {
   scalpTargets: IntradayScalpTargets;
 }
 
+export type OptionsTradeSetupSide =
+  (typeof OptionsTradeSetupSide)[keyof typeof OptionsTradeSetupSide];
+
+export const OptionsTradeSetupSide = {
+  CALL: "CALL",
+  PUT: "PUT",
+} as const;
+
+export interface OptionsTradeSetup {
+  side: OptionsTradeSetupSide;
+  strike: number;
+  expiration: string;
+  daysToExpiry: number;
+  /** Option ask price to buy at */
+  premiumEntry: number;
+  /** Exit if premium falls to this level (capital preservation) */
+  premiumStop: number;
+  /** First take-profit on premium (2x) */
+  premiumT1: number;
+  /** Second take-profit on premium (3.5x) */
+  premiumT2: number;
+  underlyingEntry: number;
+  underlyingStop: number;
+  underlyingT1: number;
+  underlyingT2: number;
+  /** @nullable */
+  impliedVolatility: number | null;
+  /** @nullable */
+  delta: number | null;
+  /** @nullable */
+  openInterest: number | null;
+  /** @nullable */
+  volume: number | null;
+}
+
+export type OptionsSignalResponseSignal =
+  (typeof OptionsSignalResponseSignal)[keyof typeof OptionsSignalResponseSignal];
+
+export const OptionsSignalResponseSignal = {
+  CALL: "CALL",
+  PUT: "PUT",
+  WAIT: "WAIT",
+} as const;
+
+export interface OptionsSignalResponse {
+  symbol: string;
+  timestamp: string;
+  currentPrice: number;
+  signal: OptionsSignalResponseSignal;
+  confidence: number;
+  reasoning: string;
+  keyFactors: string[];
+  /** Composite bull/bear score (-100 to +100, positive = bullish) */
+  technicalScore: number;
+  trade: OptionsTradeSetup | null;
+}
+
 export type GetSpyDataParams = {
   /**
    * Time period for historical data

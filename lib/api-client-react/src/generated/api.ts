@@ -17,6 +17,7 @@ import type {
   ErrorResponse,
   GetSpyDataParams,
   HealthStatus,
+  OptionsSignalResponse,
   SpyDataResponse,
   SpyPredictionResponse,
 } from "./api.schemas";
@@ -193,6 +194,82 @@ export function useGetSpyData<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetSpyDataQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a full options trade recommendation with entry, stop loss, and targets
+ * @summary Get highest-probability CALL or PUT signal
+ */
+export const getGetSpyOptionsUrl = () => {
+  return `/api/spy/options`;
+};
+
+export const getSpyOptions = async (
+  options?: RequestInit,
+): Promise<OptionsSignalResponse> => {
+  return customFetch<OptionsSignalResponse>(getGetSpyOptionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSpyOptionsQueryKey = () => {
+  return [`/api/spy/options`] as const;
+};
+
+export const getGetSpyOptionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSpyOptions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSpyOptionsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSpyOptions>>> = ({
+    signal,
+  }) => getSpyOptions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyOptions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSpyOptionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSpyOptions>>
+>;
+export type GetSpyOptionsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get highest-probability CALL or PUT signal
+ */
+
+export function useGetSpyOptions<
+  TData = Awaited<ReturnType<typeof getSpyOptions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSpyOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSpyOptionsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

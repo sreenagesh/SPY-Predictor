@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { useSpyData, useSpyPrediction, type TimePeriod } from "@/hooks/use-spy";
+import { useSpyData, useSpyPrediction, useOptionsSignal, type TimePeriod } from "@/hooks/use-spy";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
 import { PriceChart } from "@/components/price-chart";
 import { PredictionWidget } from "@/components/prediction-widget";
 import { IndicatorsGrid } from "@/components/indicators-grid";
 import { PriceTargetsCard } from "@/components/price-targets";
 import { ScalpTargetsCard } from "@/components/scalp-targets";
+import { OptionsSignalCard } from "@/components/options-signal";
 import { LoadingSpinner } from "@/components/ui-elements";
 
 export default function Dashboard() {
@@ -14,6 +15,7 @@ export default function Dashboard() {
   
   const { data: spyData, isLoading: loadingData, error: dataError } = useSpyData(period);
   const { data: prediction, isLoading: loadingPrediction, error: predError } = useSpyPrediction();
+  const { data: optionsSignal, isLoading: loadingOptions } = useOptionsSignal();
 
   const isError = dataError || predError;
   const isLoading = loadingData || loadingPrediction;
@@ -65,12 +67,26 @@ export default function Dashboard() {
         <LoadingSpinner className="h-[400px]" />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Options Signal Card - Top Priority */}
+          {loadingOptions && !optionsSignal ? (
+            <div className="col-span-1 lg:col-span-12 h-[300px] rounded-2xl border border-white/5 bg-white/5 animate-pulse" />
+          ) : optionsSignal ? (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, type: "spring", bounce: 0.4 }}
+              className="col-span-1 lg:col-span-12"
+            >
+              <OptionsSignalCard optionsSignal={optionsSignal as any} />
+            </motion.div>
+          ) : null}
+
           {/* Main Chart */}
           {spyData && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
               className="col-span-1 lg:col-span-8"
             >
               <PriceChart 
@@ -87,7 +103,7 @@ export default function Dashboard() {
             <motion.div 
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
               className="col-span-1 lg:col-span-4 flex flex-col"
             >
               <PredictionWidget 
@@ -100,15 +116,29 @@ export default function Dashboard() {
 
           {/* Technical Indicators */}
           {prediction?.indicators && (
-            <IndicatorsGrid indicators={prediction.indicators as any} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="col-span-1 lg:col-span-12"
+            >
+              <IndicatorsGrid indicators={prediction.indicators as any} />
+            </motion.div>
           )}
 
           {/* Price Targets */}
           {prediction?.priceTargets && (
-            <PriceTargetsCard 
-              targets={prediction.priceTargets} 
-              currentPrice={prediction.currentPrice} 
-            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              className="col-span-1 lg:col-span-12"
+            >
+              <PriceTargetsCard 
+                targets={prediction.priceTargets} 
+                currentPrice={prediction.currentPrice} 
+              />
+            </motion.div>
           )}
 
           {/* Scalp Targets */}
@@ -116,7 +146,7 @@ export default function Dashboard() {
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
               className="col-span-1 lg:col-span-12"
             >
               <ScalpTargetsCard

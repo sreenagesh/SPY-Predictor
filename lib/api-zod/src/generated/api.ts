@@ -51,6 +51,46 @@ export const GetSpyDataResponse = zod.object({
 });
 
 /**
+ * Returns a full options trade recommendation with entry, stop loss, and targets
+ * @summary Get highest-probability CALL or PUT signal
+ */
+export const GetSpyOptionsResponse = zod.object({
+  symbol: zod.string(),
+  timestamp: zod.string(),
+  currentPrice: zod.number(),
+  signal: zod.enum(["CALL", "PUT", "WAIT"]),
+  confidence: zod.number(),
+  reasoning: zod.string(),
+  keyFactors: zod.array(zod.string()),
+  technicalScore: zod
+    .number()
+    .describe("Composite bull\/bear score (-100 to +100, positive = bullish)"),
+  trade: zod.union([
+    zod.object({
+      side: zod.enum(["CALL", "PUT"]),
+      strike: zod.number(),
+      expiration: zod.string(),
+      daysToExpiry: zod.number(),
+      premiumEntry: zod.number().describe("Option ask price to buy at"),
+      premiumStop: zod
+        .number()
+        .describe("Exit if premium falls to this level (capital preservation)"),
+      premiumT1: zod.number().describe("First take-profit on premium (2x)"),
+      premiumT2: zod.number().describe("Second take-profit on premium (3.5x)"),
+      underlyingEntry: zod.number(),
+      underlyingStop: zod.number(),
+      underlyingT1: zod.number(),
+      underlyingT2: zod.number(),
+      impliedVolatility: zod.number().nullable(),
+      delta: zod.number().nullable(),
+      openInterest: zod.number().nullable(),
+      volume: zod.number().nullable(),
+    }),
+    zod.null(),
+  ]),
+});
+
+/**
  * Returns technical indicator analysis and directional prediction for SPY ETF
  * @summary Get SPY movement prediction
  */
