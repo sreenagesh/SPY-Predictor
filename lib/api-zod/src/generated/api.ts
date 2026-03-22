@@ -141,3 +141,50 @@ export const GetSpyPredictionResponse = zod.object({
     notes: zod.string().describe("Brief rationale for today's scalp bias"),
   }),
 });
+
+const OhlcvBarSchema = zod.object({
+  date: zod.string().describe("ISO date string"),
+  open: zod.number(),
+  high: zod.number(),
+  low: zod.number(),
+  close: zod.number(),
+  volume: zod.number(),
+});
+
+const TradingTradeSetupSchema = zod.object({
+  side: zod.enum(["CALL", "PUT"]),
+  strike: zod.number(),
+  expiration: zod.string().describe("Option expiration date (YYYY-MM-DD)"),
+  daysToExpiry: zod.number(),
+  premiumEntry: zod.number().describe("Option ask price to pay at entry"),
+  premiumStop: zod.number().describe("Exit option if premium falls to this"),
+  premiumT1: zod.number().describe("First take-profit on premium"),
+  premiumT2: zod.number().describe("Second take-profit on premium"),
+  underlyingEntry: zod.number().describe("SPY price at time of signal"),
+  underlyingStop: zod.number().describe("Close option if SPY reaches this level"),
+  underlyingT1: zod.number(),
+  underlyingT2: zod.number(),
+  impliedVolatility: zod.number().nullable(),
+  delta: zod.number().nullable(),
+  openInterest: zod.number().nullable(),
+  volume: zod.number().nullable(),
+});
+
+const TradingSignalSchema = zod.object({
+  mode: zod.enum(["intraday", "swing"]),
+  signal: zod.enum(["CALL", "PUT", "WAIT"]),
+  confidence: zod.number(),
+  score: zod.number(),
+  reasoning: zod.string(),
+  keyFactors: zod.array(zod.string()),
+  currentPrice: zod.number(),
+  timestamp: zod.string(),
+  marketStatus: zod.enum(["open", "premarket", "afterhours", "closed"]),
+  nextBarIn: zod.number().nullable(),
+  targetDate: zod.string().nullable(),
+  bars: zod.array(OhlcvBarSchema),
+  trade: TradingTradeSetupSchema.nullable(),
+});
+
+export const GetIntradaySignalResponse = TradingSignalSchema;
+export const GetSwingSignalResponse = TradingSignalSchema;

@@ -173,6 +173,58 @@ export interface OptionsSignalResponse {
   trade: OptionsTradeSetup | null;
 }
 
+export type TradingMode = "intraday" | "swing";
+export type TradingSignal = "CALL" | "PUT" | "WAIT";
+export type MarketStatus = "open" | "premarket" | "afterhours" | "closed";
+
+export interface TradingTradeSetup {
+  side: "CALL" | "PUT";
+  strike: number;
+  /** Option expiration date (YYYY-MM-DD) */
+  expiration: string;
+  daysToExpiry: number;
+  /** Option ask price to pay at entry */
+  premiumEntry: number;
+  /** Exit option if premium falls to this (capital preservation) */
+  premiumStop: number;
+  /** First take-profit on premium */
+  premiumT1: number;
+  /** Second take-profit on premium (let it run) */
+  premiumT2: number;
+  /** SPY price at time of signal */
+  underlyingEntry: number;
+  /** Close option if SPY reaches this level against trade */
+  underlyingStop: number;
+  underlyingT1: number;
+  underlyingT2: number;
+  impliedVolatility: number | null;
+  delta: number | null;
+  openInterest: number | null;
+  volume: number | null;
+}
+
+export interface TradingSignalResponse {
+  /** intraday = 5-min scalp, swing = daily BTST */
+  mode: TradingMode;
+  signal: TradingSignal;
+  /** Signal confidence 0-100 */
+  confidence: number;
+  /** Momentum score -100 to +100 */
+  score: number;
+  reasoning: string;
+  keyFactors: string[];
+  currentPrice: number;
+  timestamp: string;
+  marketStatus: MarketStatus;
+  /** Seconds until next 5-min bar closes (intraday only) */
+  nextBarIn: number | null;
+  /** Recommended entry date for swing BTST */
+  targetDate: string | null;
+  /** Price bars for chart (5-min for intraday, daily for swing) */
+  bars: OhlcvBar[];
+  trade: TradingTradeSetup | null;
+}
+
 export type GetSpyDataParams = {
   /**
    * Time period for historical data

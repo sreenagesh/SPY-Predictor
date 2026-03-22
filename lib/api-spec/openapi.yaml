@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: spy
     description: SPY ETF market data and prediction operations
+  - name: trading
+    description: Intraday scalp and swing options trade signals
 paths:
   /healthz:
     get:
@@ -67,6 +69,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OptionsSignalResponse"
+        "500":
+          description: Error computing signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /trading/intraday:
+    get:
+      operationId: getIntradaySignal
+      tags: [trading]
+      summary: Get 5-min intraday CALL/PUT scalp signal
+      description: Returns a real-time CALL/PUT options signal based on 5-minute bar momentum for intraday scalp option buying
+      responses:
+        "200":
+          description: Intraday scalp signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingSignalResponse"
+        "500":
+          description: Error computing signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /trading/swing:
+    get:
+      operationId: getSwingSignal
+      tags: [trading]
+      summary: Get daily swing BTST CALL/PUT signal
+      description: Returns an end-of-day CALL/PUT options signal for buy-today-sell-tomorrow positions (3-7 DTE options)
+      responses:
+        "200":
+          description: Swing BTST signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingSignalResponse"
         "500":
           description: Error computing signal
           content:
@@ -337,6 +377,125 @@ components:
         - delta
         - openInterest
         - volume
+    TradingTradeSetup:
+      type: object
+      description: Options trade setup for CALL or PUT buying (no spreads, no selling)
+      properties:
+        side:
+          type: string
+          enum: [CALL, PUT]
+        strike:
+          type: number
+        expiration:
+          type: string
+          description: Option expiration date (YYYY-MM-DD)
+        daysToExpiry:
+          type: number
+        premiumEntry:
+          type: number
+          description: Option ask price to pay at entry
+        premiumStop:
+          type: number
+          description: Exit option if premium falls to this (capital preservation)
+        premiumT1:
+          type: number
+          description: First take-profit on premium
+        premiumT2:
+          type: number
+          description: Second take-profit on premium (let it run)
+        underlyingEntry:
+          type: number
+          description: SPY price at time of signal
+        underlyingStop:
+          type: number
+          description: Close option if SPY reaches this level against trade
+        underlyingT1:
+          type: number
+        underlyingT2:
+          type: number
+        impliedVolatility:
+          type: ["number", "null"]
+        delta:
+          type: ["number", "null"]
+        openInterest:
+          type: ["number", "null"]
+        volume:
+          type: ["number", "null"]
+      required:
+        - side
+        - strike
+        - expiration
+        - daysToExpiry
+        - premiumEntry
+        - premiumStop
+        - premiumT1
+        - premiumT2
+        - underlyingEntry
+        - underlyingStop
+        - underlyingT1
+        - underlyingT2
+        - impliedVolatility
+        - delta
+        - openInterest
+        - volume
+    TradingSignalResponse:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [intraday, swing]
+          description: "intraday = 5-min scalp, swing = daily BTST"
+        signal:
+          type: string
+          enum: [CALL, PUT, WAIT]
+        confidence:
+          type: number
+          description: Signal confidence 0-100
+        score:
+          type: number
+          description: Momentum score -100 to +100
+        reasoning:
+          type: string
+        keyFactors:
+          type: array
+          items:
+            type: string
+        currentPrice:
+          type: number
+        timestamp:
+          type: string
+        marketStatus:
+          type: string
+          enum: [open, premarket, afterhours, closed]
+        nextBarIn:
+          type: ["number", "null"]
+          description: Seconds until next 5-min bar closes (intraday only)
+        targetDate:
+          type: ["string", "null"]
+          description: Recommended entry date for swing BTST
+        bars:
+          type: array
+          description: Price bars used for the chart (5-min for intraday, daily for swing)
+          items:
+            $ref: "#/components/schemas/OhlcvBar"
+        trade:
+          oneOf:
+            - $ref: "#/components/schemas/TradingTradeSetup"
+            - type: "null"
+      required:
+        - mode
+        - signal
+        - confidence
+        - score
+        - reasoning
+        - keyFactors
+        - currentPrice
+        - timestamp
+        - marketStatus
+        - nextBarIn
+        - targetDate
+        - bars
+        - trade
     OptionsSignalResponse:
       type: object
       properties:

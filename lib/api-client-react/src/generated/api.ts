@@ -20,6 +20,7 @@ import type {
   OptionsSignalResponse,
   SpyDataResponse,
   SpyPredictionResponse,
+  TradingSignalResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -351,5 +352,119 @@ export function useGetSpyPrediction<
     queryKey: QueryKey;
   };
 
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// ─── Intraday Scalp Signal ────────────────────────────────────────────────────
+
+export const getGetIntradaySignalUrl = () => `/api/trading/intraday`;
+
+export const getIntradaySignal = async (
+  options?: RequestInit,
+): Promise<TradingSignalResponse> => {
+  return customFetch<TradingSignalResponse>(getGetIntradaySignalUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetIntradaySignalQueryKey = () =>
+  [`/api/trading/intraday`] as const;
+
+export const getGetIntradaySignalQueryOptions = <
+  TData = Awaited<ReturnType<typeof getIntradaySignal>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIntradaySignal>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetIntradaySignalQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getIntradaySignal>>
+  > = ({ signal }) => getIntradaySignal({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIntradaySignal>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetIntradaySignal<
+  TData = Awaited<ReturnType<typeof getIntradaySignal>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIntradaySignal>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetIntradaySignalQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// ─── Swing / BTST Signal ──────────────────────────────────────────────────────
+
+export const getGetSwingSignalUrl = () => `/api/trading/swing`;
+
+export const getSwingSignal = async (
+  options?: RequestInit,
+): Promise<TradingSignalResponse> => {
+  return customFetch<TradingSignalResponse>(getGetSwingSignalUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSwingSignalQueryKey = () =>
+  [`/api/trading/swing`] as const;
+
+export const getGetSwingSignalQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSwingSignal>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSwingSignal>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetSwingSignalQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSwingSignal>>
+  > = ({ signal }) => getSwingSignal({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSwingSignal>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetSwingSignal<
+  TData = Awaited<ReturnType<typeof getSwingSignal>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSwingSignal>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSwingSignalQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
   return { ...query, queryKey: queryOptions.queryKey };
 }
