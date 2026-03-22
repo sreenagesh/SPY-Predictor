@@ -1,5 +1,15 @@
 import YahooFinanceClass from "yahoo-finance2";
-import { fetchSpyHistory, computeRsi, computeSma, computeMacd, computeBollingerBands, computeAtr, OhlcvBar } from "./spy-data.js";
+import {
+  fetchSpyHistory,
+  computeRsi,
+  computeSma,
+  computeMacd,
+  computeBollingerBands,
+  computeAtr,
+  computeEma,
+  computeMomentumScore,
+  OhlcvBar,
+} from "./spy-data.js";
 
 const yahooFinance = new YahooFinanceClass();
 
@@ -32,7 +42,7 @@ function daysUntil(date: Date): number {
 }
 
 function estimatePremium(currentPrice: number, strike: number, atr: number, daysToExpiry: number, isCall: boolean): number {
-  const iv = 0.18; // typical SPY IV ~18%
+  const iv = 0.18;
   const t = daysToExpiry / 365;
   const intrinsic = isCall
     ? Math.max(0, currentPrice - strike)
@@ -48,7 +58,6 @@ async function fetchOptionsChain(
 ): Promise<OptionsContract | null> {
   try {
     const fridays = getNextFridays(4);
-    // Target 7–14 DTE for ideal gamma/theta balance
     const targetExpiry = fridays.find(f => daysUntil(f) >= 7) ?? fridays[0];
     const dte = daysUntil(targetExpiry);
 
@@ -59,9 +68,8 @@ async function fetchOptionsChain(
     const contracts = side === "CALL" ? chain.calls : chain.puts;
     if (!contracts?.length) return null;
 
-    // Find ATM strike (closest to current price, slightly OTM preferred)
     const targetStrike = side === "CALL"
-      ? Math.ceil(currentPrice / 1) * 1  // ATM or 1$ OTM
+      ? Math.ceil(currentPrice / 1) * 1
       : Math.floor(currentPrice / 1) * 1;
 
     const sorted = [...contracts].sort((a, b) =>
@@ -70,8 +78,6 @@ async function fetchOptionsChain(
 
     const best = sorted[0];
     if (!best) return null;
-
-    const expirationDate = new Date(best.contractSymbol?.slice(3, 9).replace(/(\d{2})(\d{2})(\d{2})/, "20$1-$2-$3") || targetExpiry.toISOString());
 
     const ask = best.ask ?? best.lastPrice ?? estimatePremium(currentPrice, best.strike, atr, dte, side === "CALL");
 
@@ -127,76 +133,86 @@ export async function computeOptionsSignal(): Promise<OptionsSignal> {
   const currentPrice = closes[closes.length - 1];
   const atr = computeAtr(bars, 14);
 
-  const rsi = computeRsi(closes, 14);
-  const sma20 = computeSma(closes, 20);
-  const sma50 = computeSma(closes, 50);
-  const sma200 = computeSma(closes, Math.min(200, closes.length));
-  const macd = computeMacd(closes);
-  const bb = computeBollingerBands(closes, 20);
+  // ── Short-term momentum score (highest weight — reflects actual current trend)
+  const { score: momentumScore, factors: momentumFactors } = computeMomentumScore(bars);
 
-  // Score each indicator: +20 bullish, -20 bearish, 0 neutral
   const scores: { factor: string; score: number; reason: string }[] = [];
 
-  // RSI
-  if (rsi < 32) scores.push({ factor: "RSI", score: 25, reason: `RSI oversold at ${rsi.toFixed(1)} — strong bounce candidate` });
-  else if (rsi < 42) scores.push({ factor: "RSI", score: 12, reason: `RSI at ${rsi.toFixed(1)} — mild oversold, bullish lean` });
-  else if (rsi > 72) scores.push({ factor: "RSI", score: -25, reason: `RSI overbought at ${rsi.toFixed(1)} — likely pullback ahead` });
-  else if (rsi > 62) scores.push({ factor: "RSI", score: -12, reason: `RSI at ${rsi.toFixed(1)} — elevated, bearish lean` });
-  else scores.push({ factor: "RSI", score: 0, reason: `RSI neutral at ${rsi.toFixed(1)}` });
+  // Add each momentum factor as an individual scored item
+  for (const mf of momentumFactors) {
+    scores.push({ factor: mf.label, score: mf.score, reason: mf.detail });
+  }
 
-  // MACD
-  if (macd.histogram > 1.5) scores.push({ factor: "MACD", score: 22, reason: `MACD histogram strongly positive (+${macd.histogram.toFixed(2)}) — bullish momentum` });
-  else if (macd.histogram > 0.3) scores.push({ factor: "MACD", score: 12, reason: `MACD histogram positive (+${macd.histogram.toFixed(2)}) — upward momentum` });
-  else if (macd.histogram < -1.5) scores.push({ factor: "MACD", score: -22, reason: `MACD histogram strongly negative (${macd.histogram.toFixed(2)}) — bearish momentum` });
-  else if (macd.histogram < -0.3) scores.push({ factor: "MACD", score: -12, reason: `MACD histogram negative (${macd.histogram.toFixed(2)}) — downward pressure` });
-  else scores.push({ factor: "MACD", score: 0, reason: `MACD near zero (${macd.histogram.toFixed(2)}) — consolidating` });
-
-  // SMA trend
+  // ── SMA 20/50 alignment — medium-term context (weight: ±12, reduced from ±18)
+  const sma20 = computeSma(closes, 20);
+  const sma50 = computeSma(closes, 50);
   const aboveSma20 = currentPrice > sma20;
   const aboveSma50 = currentPrice > sma50;
-  if (aboveSma20 && aboveSma50 && sma20 > sma50) scores.push({ factor: "Trend", score: 18, reason: "Price above SMA20 & SMA50 with bullish alignment" });
-  else if (!aboveSma20 && !aboveSma50 && sma20 < sma50) scores.push({ factor: "Trend", score: -18, reason: "Price below SMA20 & SMA50 with bearish alignment" });
-  else if (aboveSma20 && !aboveSma50) scores.push({ factor: "Trend", score: 5, reason: "Price above SMA20 but below SMA50 — mixed" });
-  else scores.push({ factor: "Trend", score: -5, reason: "Price below SMA20 but holding near SMA50 — weakening" });
+  if (aboveSma20 && aboveSma50 && sma20 > sma50) {
+    scores.push({ factor: "Trend", score: 12, reason: "Price above SMA20 & SMA50 with bullish alignment" });
+  } else if (!aboveSma20 && !aboveSma50 && sma20 < sma50) {
+    scores.push({ factor: "Trend", score: -12, reason: "Price below SMA20 & SMA50 with bearish alignment" });
+  } else if (aboveSma20 && !aboveSma50) {
+    scores.push({ factor: "Trend", score: 4, reason: "Price above SMA20 but below SMA50 — mixed medium-term" });
+  } else {
+    scores.push({ factor: "Trend", score: -4, reason: "Price below SMA20 but holding near SMA50 — weakening" });
+  }
 
-  // Golden/Death cross
-  if (sma50 > sma200) scores.push({ factor: "Golden Cross", score: 15, reason: `Golden cross active — SMA50 $${sma50.toFixed(2)} > SMA200 $${sma200.toFixed(2)}` });
-  else scores.push({ factor: "Death Cross", score: -15, reason: `Death cross active — SMA50 $${sma50.toFixed(2)} < SMA200 $${sma200.toFixed(2)}` });
+  // ── Bollinger Bands — mean-reversion context (weight: ±12)
+  const bb = computeBollingerBands(closes, 20);
+  if (bb.percentB < 0.1) {
+    scores.push({ factor: "Bollinger Bands", score: 12, reason: `Price at lower BB extreme (${(bb.percentB * 100).toFixed(0)}%) — oversold reversal zone` });
+  } else if (bb.percentB < 0.25) {
+    scores.push({ factor: "Bollinger Bands", score: 6, reason: `Price near lower BB (${(bb.percentB * 100).toFixed(0)}%) — approaching oversold` });
+  } else if (bb.percentB > 0.9) {
+    scores.push({ factor: "Bollinger Bands", score: -12, reason: `Price at upper BB extreme (${(bb.percentB * 100).toFixed(0)}%) — overbought reversal zone` });
+  } else if (bb.percentB > 0.75) {
+    scores.push({ factor: "Bollinger Bands", score: -6, reason: `Price near upper BB (${(bb.percentB * 100).toFixed(0)}%) — overbought territory` });
+  } else {
+    scores.push({ factor: "Bollinger Bands", score: 0, reason: `Price mid-range in BB (${(bb.percentB * 100).toFixed(0)}%) — no extreme` });
+  }
 
-  // Bollinger Bands
-  if (bb.percentB < 0.1) scores.push({ factor: "Bollinger Bands", score: 20, reason: `Price at lower BB extreme (${(bb.percentB * 100).toFixed(0)}%) — reversal zone` });
-  else if (bb.percentB < 0.25) scores.push({ factor: "Bollinger Bands", score: 10, reason: `Price near lower BB (${(bb.percentB * 100).toFixed(0)}%) — oversold zone` });
-  else if (bb.percentB > 0.9) scores.push({ factor: "Bollinger Bands", score: -20, reason: `Price at upper BB extreme (${(bb.percentB * 100).toFixed(0)}%) — reversal zone` });
-  else if (bb.percentB > 0.75) scores.push({ factor: "Bollinger Bands", score: -10, reason: `Price near upper BB (${(bb.percentB * 100).toFixed(0)}%) — overbought zone` });
-  else scores.push({ factor: "Bollinger Bands", score: 0, reason: `Price mid-range in BB (${(bb.percentB * 100).toFixed(0)}%)` });
+  // ── Golden/Death Cross — BACKGROUND context only (weight: ±5, reduced from ±15)
+  // Long-term structure gives very little edge for intraday options direction
+  const sma200 = computeSma(closes, Math.min(200, closes.length));
+  if (sma50 > sma200) {
+    scores.push({ factor: "Long-term", score: 5, reason: `Golden cross background — SMA50 $${sma50.toFixed(2)} > SMA200 $${sma200.toFixed(2)}` });
+  } else {
+    scores.push({ factor: "Long-term", score: -5, reason: `Death cross background — SMA50 $${sma50.toFixed(2)} < SMA200 $${sma200.toFixed(2)}` });
+  }
 
   const technicalScore = scores.reduce((sum, s) => sum + s.score, 0);
-  const keyFactors = scores.map(s => s.reason);
+
+  // Show only the most impactful factors in the UI (momentum factors first)
+  const keyFactors = scores
+    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
+    .slice(0, 6)
+    .map(s => s.reason);
 
   let signal: "CALL" | "PUT" | "WAIT";
   let confidence: number;
   let reasoning: string;
 
-  if (technicalScore >= 30) {
+  if (technicalScore >= 40) {
     signal = "CALL";
-    confidence = Math.min(50 + technicalScore * 0.7, 92);
-    reasoning = `Strong bullish confluence (score: +${technicalScore}). Multiple indicators align for upside momentum. A CALL position offers the best risk-adjusted entry with defined risk on premium.`;
-  } else if (technicalScore <= -30) {
+    confidence = Math.min(52 + technicalScore * 0.55, 92);
+    reasoning = `Strong bullish confluence (score: +${technicalScore}). Short-term momentum, EMA trend, and MACD all aligned upward. CALL offers best risk-adjusted entry with defined premium risk.`;
+  } else if (technicalScore <= -40) {
     signal = "PUT";
-    confidence = Math.min(50 + Math.abs(technicalScore) * 0.7, 92);
-    reasoning = `Strong bearish confluence (score: ${technicalScore}). Downside pressure confirmed across multiple timeframes. A PUT position offers the best risk-adjusted entry.`;
-  } else if (technicalScore > 10) {
+    confidence = Math.min(52 + Math.abs(technicalScore) * 0.55, 92);
+    reasoning = `Strong bearish confluence (score: ${technicalScore}). Short-term momentum, EMA trend, and MACD all point lower. PUT offers best risk-adjusted entry with defined premium risk.`;
+  } else if (technicalScore >= 20) {
     signal = "CALL";
-    confidence = 40 + technicalScore * 0.5;
-    reasoning = `Moderate bullish lean (score: +${technicalScore}). Signal is directional but not high conviction — consider smaller size or wait for confirmation.`;
-  } else if (technicalScore < -10) {
+    confidence = 38 + technicalScore * 0.5;
+    reasoning = `Moderate bullish lean (score: +${technicalScore}). Short-term indicators favor upside but conviction is not high — consider reduced size or wait for breakout confirmation.`;
+  } else if (technicalScore <= -20) {
     signal = "PUT";
-    confidence = 40 + Math.abs(technicalScore) * 0.5;
-    reasoning = `Moderate bearish lean (score: ${technicalScore}). Signal is directional but not high conviction — consider smaller size or wait for confirmation.`;
+    confidence = 38 + Math.abs(technicalScore) * 0.5;
+    reasoning = `Moderate bearish lean (score: ${technicalScore}). Short-term indicators favor downside but conviction is not high — consider reduced size or wait for breakdown confirmation.`;
   } else {
     signal = "WAIT";
-    confidence = 30 + Math.abs(technicalScore) * 2;
-    reasoning = `No clear edge (score: ${technicalScore}). Mixed signals — best to wait for clearer directional confirmation before opening options positions.`;
+    confidence = 30 + Math.abs(technicalScore) * 1.5;
+    reasoning = `No clear directional edge (score: ${technicalScore}). Short-term signals are conflicting — best to wait for the EMA 8/21 and MACD to resolve in one direction before opening options positions.`;
   }
 
   confidence = Math.round(Math.min(Math.max(confidence, 25), 92));
@@ -208,10 +224,8 @@ export async function computeOptionsSignal(): Promise<OptionsSignal> {
   const side = signal as "CALL" | "PUT";
   const isCall = side === "CALL";
 
-  // Attempt to fetch live options chain
   let contract = await fetchOptionsChain(currentPrice, side, atr);
 
-  // Fallback: estimate from ATR/IV if chain unavailable
   if (!contract) {
     const dte = 7;
     const strike = isCall ? Math.round(currentPrice) + 1 : Math.round(currentPrice) - 1;
@@ -231,12 +245,10 @@ export async function computeOptionsSignal(): Promise<OptionsSignal> {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const pe = contract.premiumEntry;
 
-  // Premium levels
-  const premiumStop = round2(pe * 0.45);   // lose 55%
-  const premiumT1 = round2(pe * 2.0);      // 100% gain
-  const premiumT2 = round2(pe * 3.5);      // 250% gain
+  const premiumStop = round2(pe * 0.45);
+  const premiumT1 = round2(pe * 2.0);
+  const premiumT2 = round2(pe * 3.5);
 
-  // Underlying levels: use ATR fractions
   const underlyingEntry = round2(currentPrice);
   const underlyingStop = round2(isCall ? currentPrice - atr * 0.35 : currentPrice + atr * 0.35);
   const underlyingT1 = round2(isCall ? currentPrice + atr * 0.45 : currentPrice - atr * 0.45);

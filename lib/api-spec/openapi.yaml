@@ -256,6 +256,9 @@ components:
         bias:
           type: string
           enum: [long, short, neutral]
+        score:
+          type: number
+          description: Short-term momentum score used to determine bias (-100 to +100)
         atr:
           type: number
           description: Daily ATR used for intraday range estimation
@@ -271,6 +274,7 @@ components:
           description: Brief rationale for today's scalp bias
       required:
         - bias
+        - score
         - atr
         - estimatedDayRange
         - longSetup

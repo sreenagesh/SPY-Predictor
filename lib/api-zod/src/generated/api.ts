@@ -119,6 +119,7 @@ export const GetSpyPredictionResponse = zod.object({
   }),
   scalpTargets: zod.object({
     bias: zod.enum(["long", "short", "neutral"]),
+    score: zod.number().describe("Short-term momentum score used to determine bias (-100 to +100)"),
     atr: zod.number().describe("Daily ATR used for intraday range estimation"),
     estimatedDayRange: zod
       .number()

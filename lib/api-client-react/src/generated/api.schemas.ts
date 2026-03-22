@@ -90,6 +90,8 @@ export interface ScalpSetup {
 
 export interface IntradayScalpTargets {
   bias: IntradayScalpTargetsBias;
+  /** Short-term momentum score used to determine bias (-100 to +100) */
+  score: number;
   /** Daily ATR used for intraday range estimation */
   atr: number;
   /** Estimated intraday price range based on ATR */

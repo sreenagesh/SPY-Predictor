@@ -155,7 +155,7 @@ router.get("/spy/prediction", async (_req, res): Promise<void> => {
       },
     ];
 
-    const scalpTargets = computeScalpTargets(bars, prediction, rsi, macd.histogram);
+    const scalpTargets = computeScalpTargets(bars);
 
     const data = GetSpyPredictionResponse.parse({
       symbol: "SPY",
