@@ -44,52 +44,42 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          {
-            label: "SPY Current",
-            value: spyData?.currentPrice ? formatCurrency(spyData.currentPrice) : "---",
-            sub: "Live Data",
-          },
-          {
-            label: `${period.toUpperCase()} Change`,
-            value: spyData?.priceChangePct ? formatPercentage(spyData.priceChangePct) : "---",
-            sub: spyData?.priceChange ? formatCurrency(spyData.priceChange) : "---",
-            isPos: (spyData?.priceChangePct || 0) > 0,
-            isNeg: (spyData?.priceChangePct || 0) < 0,
-          },
-          {
-            label: "Last Updated",
-            value: prediction?.timestamp
-              ? new Date(prediction.timestamp).toLocaleTimeString()
-              : "---",
-            sub: "Model Sync",
-          },
-          { label: "Model Version", value: "Quant-v4.2", sub: "Stable" },
-        ].map((stat, i) => (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            key={i}
-            className="glass-panel p-4 rounded-2xl flex flex-col"
-          >
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
-              {stat.label}
+    <div className="space-y-4">
+      {/* Compact header bar */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-panel rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-3"
+      >
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* SPY price */}
+          <div className="flex items-baseline gap-2">
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">SPY</span>
+            <span className="text-2xl font-mono font-black text-foreground">
+              {spyData?.currentPrice ? formatCurrency(spyData.currentPrice) : "---"}
             </span>
-            <span
-              className={`text-2xl font-mono font-bold ${
-                stat.isPos ? "text-bullish" : stat.isNeg ? "text-bearish" : "text-foreground"
-              }`}
-            >
-              {stat.value}
-            </span>
-            <span className="text-xs text-muted-foreground mt-1">{stat.sub}</span>
-          </motion.div>
-        ))}
-      </div>
+          </div>
+          {/* Change */}
+          {spyData?.priceChangePct != null && (
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-sm font-bold font-mono ${spyData.priceChangePct >= 0 ? "text-bullish" : "text-bearish"}`}>
+                {formatPercentage(spyData.priceChangePct)}
+              </span>
+              <span className={`text-xs font-mono ${spyData.priceChangePct >= 0 ? "text-bullish/70" : "text-bearish/70"}`}>
+                ({spyData.priceChange >= 0 ? "+" : ""}{formatCurrency(spyData.priceChange)})
+              </span>
+              <span className="text-[10px] text-muted-foreground/50">{period.toUpperCase()}</span>
+            </div>
+          )}
+        </div>
+        {/* Updated time */}
+        {intradaySignal?.timestamp && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-bullish animate-pulse" />
+            <span>Live · {new Date(intradaySignal.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+        )}
+      </motion.div>
 
       {isLoading && !spyData && !prediction ? (
         <LoadingSpinner className="h-[400px]" />
