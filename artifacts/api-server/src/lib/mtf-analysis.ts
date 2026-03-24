@@ -72,6 +72,21 @@ export interface ZeroDteIntel {
   tradingAdvice: string[];
 }
 
+export interface KeyLevel {
+  label: string;
+  fullName: string;
+  price: number;
+  distanceFromPrice: number;  // signed (positive = above current price)
+  distancePct: number;        // absolute %
+  isAbove: boolean;
+  sweepStatus: "swept_reclaimed" | "sweeping" | "none";
+  sweepBarsAgo: number | null;
+  sweepDetail: string | null;
+  sweepBias: "bullish" | "bearish" | null;
+  isInPlay: boolean;          // within 0.5% of current price
+  significance: "high" | "medium" | "standard"; // PM = high, PW = medium, PD = standard
+}
+
 export interface MtfAnalysis {
   timestamp: string;
   marketStatus: string;
@@ -88,6 +103,7 @@ export interface MtfAnalysis {
     confidence: number;
   };
   zeroDTE: ZeroDteIntel;
+  keyLevels: KeyLevel[];
 }
 
 // ─── Bar fetching ─────────────────────────────────────────────────────────────
@@ -327,6 +343,158 @@ function getExpectedMove(atr5m: number): number {
   return Math.round(atr5m * Math.sqrt(78) * 100) / 100;
 }
 
+// ─── Key Levels (PDH/PDL/PWH/PWL/PMH/PML) ────────────────────────────────────
+
+function isoWeek(date: Date): number {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+// Detect if a liquidity sweep occurred at `level` in the given bars.
+// isResistance = level is above price (high); false = level is support (low).
+function detectSweep(
+  bars: OhlcvBar[],
+  level: number,
+  isResistance: boolean,
+): { status: "swept_reclaimed" | "sweeping" | "none"; barsAgo: number | null; detail: string | null } {
+  const r2 = (n: number) => n.toFixed(2);
+  const lastBar = bars[bars.length - 1];
+
+  // Currently sweeping through the level?
+  if (isResistance && lastBar.close > level) {
+    return { status: "sweeping", barsAgo: 0, detail: `Price closed above $${r2(level)} — watching for reversal back below` };
+  }
+  if (!isResistance && lastBar.close < level) {
+    return { status: "sweeping", barsAgo: 0, detail: `Price closed below $${r2(level)} — watching for reclaim back above` };
+  }
+
+  // Scan backwards for a single-candle sweep: wick through level, close back
+  for (let i = bars.length - 1; i >= 0; i--) {
+    const b = bars[i];
+    const barsAgo = bars.length - 1 - i;
+    const label = barsAgo <= 3 ? "FRESH SWEEP" : barsAgo <= 12 ? "Recent sweep" : "Aged sweep";
+
+    if (isResistance && b.high > level && b.close < level) {
+      return {
+        status: "swept_reclaimed",
+        barsAgo,
+        detail: `${label}: wick to $${r2(b.high)} rejected at $${r2(level)}, closed $${r2(b.close)} — bearish reversal`,
+      };
+    }
+    if (!isResistance && b.low < level && b.close > level) {
+      return {
+        status: "swept_reclaimed",
+        barsAgo,
+        detail: `${label}: wick to $${r2(b.low)} reclaimed $${r2(level)}, closed $${r2(b.close)} — bullish reversal`,
+      };
+    }
+
+    // Multi-candle sweep: bar broke through, next bar reclaimed
+    if (i < bars.length - 1) {
+      const nextBar = bars[i + 1];
+      if (isResistance && b.close > level && nextBar.close < level) {
+        return {
+          status: "swept_reclaimed",
+          barsAgo: barsAgo - 1,
+          detail: `${label}: closed above $${r2(level)} then reversed below next bar — bearish reclaim`,
+        };
+      }
+      if (!isResistance && b.close < level && nextBar.close > level) {
+        return {
+          status: "swept_reclaimed",
+          barsAgo: barsAgo - 1,
+          detail: `${label}: closed below $${r2(level)} then reclaimed next bar — bullish reversal`,
+        };
+      }
+    }
+  }
+
+  return { status: "none", barsAgo: null, detail: null };
+}
+
+function computeKeyLevels(dailyBars: OhlcvBar[], bars5m: OhlcvBar[], currentPrice: number): KeyLevel[] {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+
+  // Exclude today's incomplete bar using UTC date
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const complete = dailyBars.filter(b => b.date.slice(0, 10) !== todayStr);
+  if (complete.length < 5) return [];
+
+  // PDH / PDL — last complete trading day
+  const prevDay = complete[complete.length - 1];
+  const pdh = prevDay.high;
+  const pdl = prevDay.low;
+
+  // PWH / PWL — last fully-complete ISO week (not the current week)
+  const lastCompleteWeek = isoWeek(new Date(complete[complete.length - 1].date));
+  // Current ISO week of today
+  const currentWeek = isoWeek(new Date());
+  const targetWeek = currentWeek === lastCompleteWeek ? lastCompleteWeek - 1 : lastCompleteWeek;
+  const prevWeekBars = complete.filter(b => isoWeek(new Date(b.date)) === targetWeek);
+  // Fallback: last 5 bars before yesterday
+  const weekBars = prevWeekBars.length >= 3 ? prevWeekBars : complete.slice(-6, -1);
+  const pwh = weekBars.length ? Math.max(...weekBars.map(b => b.high)) : null;
+  const pwl = weekBars.length ? Math.min(...weekBars.map(b => b.low)) : null;
+
+  // PMH / PML — previous calendar month
+  const today = new Date();
+  const prevMonth = today.getUTCMonth() === 0 ? 11 : today.getUTCMonth() - 1;
+  const prevMonthYear = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
+  const prevMonthBars = complete.filter(b => {
+    const d = new Date(b.date);
+    return d.getUTCMonth() === prevMonth && d.getUTCFullYear() === prevMonthYear;
+  });
+  const pmh = prevMonthBars.length ? Math.max(...prevMonthBars.map(b => b.high)) : null;
+  const pml = prevMonthBars.length ? Math.min(...prevMonthBars.map(b => b.low)) : null;
+
+  // Scan last 48 5m bars (4 hours) for sweeps
+  const scanBars = bars5m.slice(-48);
+
+  const rawLevels: Array<{
+    label: string; fullName: string; price: number;
+    significance: "high" | "medium" | "standard";
+  }> = [
+    { label: "PDH", fullName: "Previous Day High",   price: r2(pdh), significance: "standard" },
+    { label: "PDL", fullName: "Previous Day Low",    price: r2(pdl), significance: "standard" },
+    ...(pwh != null ? [{ label: "PWH", fullName: "Previous Week High",  price: r2(pwh), significance: "medium" as const }] : []),
+    ...(pwl != null ? [{ label: "PWL", fullName: "Previous Week Low",   price: r2(pwl), significance: "medium" as const }] : []),
+    ...(pmh != null ? [{ label: "PMH", fullName: "Previous Month High", price: r2(pmh), significance: "high" as const }] : []),
+    ...(pml != null ? [{ label: "PML", fullName: "Previous Month Low",  price: r2(pml), significance: "high" as const }] : []),
+  ];
+
+  return rawLevels
+    .map(lv => {
+      const isAbove = lv.price > currentPrice;
+      const distanceFromPrice = r2(lv.price - currentPrice);
+      const distancePct = r2(Math.abs(distanceFromPrice / currentPrice) * 100);
+      const isInPlay = distancePct < 0.5;
+      const sweep = detectSweep(scanBars, lv.price, isAbove);
+      // Bias depends on where price is relative to the level:
+      //   level above price (resistance) → rejected = BEARISH
+      //   level below price (support)   → reclaimed  = BULLISH
+      const sweepBias: "bullish" | "bearish" | null =
+        sweep.status !== "none" ? (isAbove ? "bearish" : "bullish") : null;
+      return {
+        label: lv.label,
+        fullName: lv.fullName,
+        price: lv.price,
+        distanceFromPrice,
+        distancePct,
+        isAbove,
+        sweepStatus: sweep.status,
+        sweepBarsAgo: sweep.barsAgo,
+        sweepDetail: sweep.detail,
+        sweepBias,
+        isInPlay,
+        significance: lv.significance,
+      };
+    })
+    .sort((a, b) => b.price - a.price); // highest level first
+}
+
 // ─── 0DTE trading advice generator ───────────────────────────────────────────
 
 function buildTradingAdvice(
@@ -339,8 +507,21 @@ function buildTradingAdvice(
   levels: SessionLevels,
   pivots: PivotLevels,
   currentPrice: number,
+  keyLevels: KeyLevel[],
 ): string[] {
   const advice: string[] = [];
+
+  // 0. Fresh sweep+reclaim at a key level (highest priority — leads everything)
+  const freshSweeps = keyLevels.filter(
+    kl => kl.sweepStatus === "swept_reclaimed" && kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 6,
+  );
+  for (const fs of freshSweeps.slice(0, 2)) {
+    const side = fs.sweepBias === "bullish" ? "CALL" : "PUT";
+    const sigLabel = fs.significance === "high" ? "🔴 HIGH-SIGNIFICANCE" : fs.significance === "medium" ? "SIGNIFICANT" : "";
+    advice.push(
+      `${sigLabel} ${fs.label} sweep just occurred ($${fs.price}): ${fs.sweepDetail}. This is a high-probability ${side} setup — ${fs.sweepBias === "bullish" ? "longs reclaimed the level, shorts trapped" : "shorts reclaimed the level, longs trapped"}.`,
+    );
+  }
 
   // 1. MTF alignment
   if (alignScore === 3) {
@@ -418,11 +599,12 @@ function buildTradingAdvice(
 // ─── Main computation ─────────────────────────────────────────────────────────
 
 export async function computeMtfAnalysis(): Promise<MtfAnalysis> {
-  // Fetch all 3 timeframes in parallel
-  const [bars5m, bars15m, bars1h] = await Promise.all([
+  // Fetch all timeframes + daily bars in parallel
+  const [bars5m, bars15m, bars1h, barsDaily] = await Promise.all([
     fetchBars("5m",  7),
     fetchBars("15m", 7),
     fetchBars("1h",  60),
+    fetchBars("1d",  65),  // 65 days covers prev month + week + day
   ]);
 
   const snap5m  = scoreBars(bars5m,  "5m");
@@ -467,6 +649,16 @@ export async function computeMtfAnalysis(): Promise<MtfAnalysis> {
   // 5m bars/year = 252 * 6.5 * 12 = 19,656 → sqrt ≈ 140
   const vixProxy = Math.round((snap5m.atr / currentPrice) * 140 * 100 * 100) / 100;
 
+  // Key levels + liquidity sweep detection
+  const keyLevels = computeKeyLevels(barsDaily, bars5m, currentPrice);
+
+  // Fresh sweeps can elevate entry quality (stops cleared = edge)
+  const freshSweeps = keyLevels.filter(
+    kl => kl.sweepStatus === "swept_reclaimed" && kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 6,
+  );
+  const hasFreshSweep = freshSweeps.length > 0;
+  const freshSweepBias = hasFreshSweep ? freshSweeps[0].sweepBias : null;
+
   // Entry quality synthesis
   let entryQuality: "High" | "Medium" | "Low" | "Avoid";
   let riskRating: "Low" | "Medium" | "High" | "Extreme";
@@ -476,6 +668,11 @@ export async function computeMtfAnalysis(): Promise<MtfAnalysis> {
     entryQuality = "Avoid";
     riskRating = "Extreme";
     suggestedSide = "WAIT";
+  } else if (hasFreshSweep && Math.abs(alignScore) >= 1 && !entryWindow.isDanger) {
+    // Fresh sweep at PDH/PDL/PWx/PMx overrides normal quality — liquidity cleared = high edge
+    entryQuality = freshSweeps[0].significance === "high" ? "High" : "Medium";
+    riskRating = freshSweeps[0].significance === "high" ? "Low" : "Medium";
+    suggestedSide = freshSweepBias === "bullish" ? "CALL" : freshSweepBias === "bearish" ? "PUT" : "WAIT";
   } else if (Math.abs(alignScore) === 3 && entryWindow.isOptimal && volumeCtx.expanding) {
     entryQuality = "High";
     riskRating = "Low";
@@ -496,7 +693,7 @@ export async function computeMtfAnalysis(): Promise<MtfAnalysis> {
 
   const tradingAdvice = buildTradingAdvice(
     snap5m, snap15m, snap1h,
-    alignScore, entryWindow, volumeCtx, sessionLevels, pivots, currentPrice,
+    alignScore, entryWindow, volumeCtx, sessionLevels, pivots, currentPrice, keyLevels,
   );
 
   return {
@@ -527,5 +724,6 @@ export async function computeMtfAnalysis(): Promise<MtfAnalysis> {
       expectedMove: getExpectedMove(snap5m.atr),
       tradingAdvice,
     },
+    keyLevels,
   };
 }

@@ -273,6 +273,21 @@ export interface VolumeContext {
   label: string;
 }
 
+export interface KeyLevel {
+  label: string;
+  fullName: string;
+  price: number;
+  distanceFromPrice: number;
+  distancePct: number;
+  isAbove: boolean;
+  sweepStatus: "swept_reclaimed" | "sweeping" | "none";
+  sweepBarsAgo: number | null;
+  sweepDetail: string | null;
+  sweepBias: "bullish" | "bearish" | null;
+  isInPlay: boolean;
+  significance: "high" | "medium" | "standard";
+}
+
 export interface MtfAnalysisResponse {
   timestamp: string;
   marketStatus: string;
@@ -301,6 +316,7 @@ export interface MtfAnalysisResponse {
     expectedMove: number;
     tradingAdvice: string[];
   };
+  keyLevels: KeyLevel[];
 }
 
 export type GetSpyDataParams = {

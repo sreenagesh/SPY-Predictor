@@ -3,10 +3,10 @@ import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Minus, Clock, AlertTriangle,
   CheckCircle, XCircle, BarChart2, Target, Layers, Zap,
-  ChevronRight, Info,
+  ChevronRight, Info, ShieldAlert, Flame,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import type { MtfAnalysisResponse, TimeframeSnapshot } from "@workspace/api-client-react";
+import type { MtfAnalysisResponse, TimeframeSnapshot, KeyLevel } from "@workspace/api-client-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -391,6 +391,141 @@ function ZeroDtePanel({ z, currentPrice }: {
   );
 }
 
+// ─── Key Levels / Liquidity Sweeps ────────────────────────────────────────────
+
+function sweepBadge(kl: KeyLevel) {
+  if (kl.sweepStatus === "swept_reclaimed") {
+    const color = kl.sweepBias === "bullish" ? "bg-bullish/15 text-bullish border-bullish/30" : "bg-bearish/15 text-bearish border-bearish/30";
+    const freshness = kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 3 ? "FRESH" : kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 12 ? "RECENT" : "AGED";
+    return (
+      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${color}`}>
+        {freshness} SWEEP {kl.sweepBias === "bullish" ? "↑" : "↓"}
+      </span>
+    );
+  }
+  if (kl.sweepStatus === "sweeping") {
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-neutral/15 text-neutral border-neutral/30 animate-pulse">
+        SWEEPING…
+      </span>
+    );
+  }
+  if (kl.isInPlay) {
+    return (
+      <span className="text-[10px] px-2 py-0.5 rounded border bg-white/5 text-muted-foreground border-white/10">
+        IN PLAY
+      </span>
+    );
+  }
+  return null;
+}
+
+function KeyLevelRow({ kl }: { kl: KeyLevel }) {
+  const isFresh = kl.sweepStatus === "swept_reclaimed" && kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 6;
+  const sigDot = kl.significance === "high" ? "bg-bearish" : kl.significance === "medium" ? "bg-neutral" : "bg-white/30";
+  const rowBg = isFresh
+    ? kl.sweepBias === "bullish" ? "bg-bullish/5 border-bullish/20" : "bg-bearish/5 border-bearish/20"
+    : kl.isInPlay ? "bg-white/4 border-white/12" : "bg-transparent border-white/5";
+
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-lg border ${rowBg}`}>
+      {/* Significance dot */}
+      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${sigDot}`} />
+
+      {/* Label + price */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-black font-mono text-foreground/80">{kl.label}</span>
+          <span className="text-xs font-mono font-bold text-foreground">${kl.price.toFixed(2)}</span>
+          {sweepBadge(kl)}
+        </div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          {kl.fullName} &bull; {kl.isAbove ? "+" : ""}{kl.distanceFromPrice.toFixed(2)} ({kl.isAbove ? "+" : ""}{kl.distancePct.toFixed(2)}%)
+        </div>
+        {kl.sweepDetail && (
+          <p className={`text-[11px] mt-1 leading-snug ${kl.sweepBias === "bullish" ? "text-bullish/80" : kl.sweepBias === "bearish" ? "text-bearish/80" : "text-muted-foreground"}`}>
+            {kl.sweepDetail}
+          </p>
+        )}
+      </div>
+
+      {/* Arrow: above or below */}
+      <div className={`text-xs font-bold flex-shrink-0 ${kl.isAbove ? "text-bearish/60" : "text-bullish/60"}`}>
+        {kl.isAbove ? "↑" : "↓"}
+      </div>
+    </div>
+  );
+}
+
+function KeyLevelsPanel({ keyLevels, currentPrice }: { keyLevels: KeyLevel[]; currentPrice: number }) {
+  const freshSweeps = keyLevels.filter(kl => kl.sweepStatus === "swept_reclaimed" && kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 6);
+
+  // Sort: fresh sweeps first, then in-play, then by distance
+  const sorted = [...keyLevels].sort((a, b) => {
+    const scoreFn = (kl: KeyLevel) => {
+      if (kl.sweepStatus === "swept_reclaimed" && kl.sweepBarsAgo != null && kl.sweepBarsAgo <= 6) return 0;
+      if (kl.sweepStatus === "sweeping") return 1;
+      if (kl.isInPlay) return 2;
+      if (kl.sweepStatus === "swept_reclaimed") return 3;
+      return 4;
+    };
+    const sd = scoreFn(a) - scoreFn(b);
+    if (sd !== 0) return sd;
+    return a.distancePct - b.distancePct;
+  });
+
+  return (
+    <div className="space-y-3">
+      {/* Alert for fresh sweeps */}
+      {freshSweeps.length > 0 && (
+        <div className={`rounded-xl border p-3 flex items-start gap-3 ${freshSweeps[0].sweepBias === "bullish" ? "bg-bullish/10 border-bullish/30" : "bg-bearish/10 border-bearish/30"}`}>
+          <Flame className={`w-4 h-4 mt-0.5 flex-shrink-0 ${freshSweeps[0].sweepBias === "bullish" ? "text-bullish" : "text-bearish"}`} />
+          <div>
+            <p className={`text-sm font-bold ${freshSweeps[0].sweepBias === "bullish" ? "text-bullish" : "text-bearish"}`}>
+              Fresh Liquidity Sweep — High Probability {freshSweeps[0].sweepBias === "bullish" ? "CALL" : "PUT"} Setup
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Stops have been cleared at {freshSweeps.map(s => s.label).join(", ")}. Smart money positioned — look for entry confirmation.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Current price marker */}
+      <div className="flex items-center gap-2 py-1">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-[10px] font-mono font-bold text-foreground/60 bg-white/6 px-2 py-0.5 rounded">
+          ▶ SPY ${currentPrice.toFixed(2)}
+        </span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      {/* Key level rows */}
+      <div className="space-y-1.5">
+        {sorted.map(kl => (
+          <KeyLevelRow key={kl.label} kl={kl} />
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 pt-1 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-bearish" />
+          <span className="text-[10px] text-muted-foreground">Monthly (high significance)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral" />
+          <span className="text-[10px] text-muted-foreground">Weekly</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+          <span className="text-[10px] text-muted-foreground">Daily</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 interface MtfPanelProps {
@@ -456,6 +591,21 @@ export function MtfPanel({ data, isLoading }: MtfPanelProps) {
       </div>
 
       <ZeroDtePanel z={data.zeroDTE} currentPrice={data.currentPrice} />
+
+      {/* Key Levels & Liquidity Sweeps */}
+      {data.keyLevels && data.keyLevels.length > 0 && (
+        <>
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/5" />
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs font-bold tracking-widest text-muted-foreground uppercase">Liquidity Levels & Sweeps</span>
+            </div>
+            <div className="h-px flex-1 bg-white/5" />
+          </div>
+          <KeyLevelsPanel keyLevels={data.keyLevels} currentPrice={data.currentPrice} />
+        </>
+      )}
     </motion.div>
   );
 }

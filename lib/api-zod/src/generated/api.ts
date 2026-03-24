@@ -237,6 +237,21 @@ const VolumeContextSchema = zod.object({
   label: zod.string(),
 });
 
+export const KeyLevelSchema = zod.object({
+  label: zod.string(),
+  fullName: zod.string(),
+  price: zod.number(),
+  distanceFromPrice: zod.number(),
+  distancePct: zod.number(),
+  isAbove: zod.boolean(),
+  sweepStatus: zod.enum(["swept_reclaimed", "sweeping", "none"]),
+  sweepBarsAgo: zod.number().nullable(),
+  sweepDetail: zod.string().nullable(),
+  sweepBias: zod.enum(["bullish", "bearish"]).nullable(),
+  isInPlay: zod.boolean(),
+  significance: zod.enum(["high", "medium", "standard"]),
+});
+
 export const GetMtfAnalysisResponse = zod.object({
   timestamp: zod.string(),
   marketStatus: zod.string(),
@@ -265,4 +280,5 @@ export const GetMtfAnalysisResponse = zod.object({
     expectedMove: zod.number(),
     tradingAdvice: zod.array(zod.string()),
   }),
+  keyLevels: zod.array(KeyLevelSchema),
 });
