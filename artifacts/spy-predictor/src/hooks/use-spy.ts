@@ -4,6 +4,7 @@ import {
   useGetSpyOptions,
   useGetIntradaySignal,
   useGetSwingSignal,
+  useGetMtfAnalysis,
 } from "@workspace/api-client-react";
 
 export type TimePeriod = "1mo" | "3mo" | "6mo" | "1y" | "2y";
@@ -53,8 +54,19 @@ export function useIntradaySignal() {
 export function useSwingSignal() {
   return useGetSwingSignal({
     query: {
-      refetchInterval: 15 * 60 * 1000, // every 15 minutes
+      refetchInterval: 15 * 60 * 1000,
       staleTime: 5 * 60 * 1000,
+      retry: 2,
+    },
+  });
+}
+
+// Multi-timeframe analysis (5m, 15m, 1h) — refreshes every 5 minutes
+export function useMtfAnalysis() {
+  return useGetMtfAnalysis({
+    query: {
+      refetchInterval: 5 * 60 * 1000,
+      staleTime: 60 * 1000,
       retry: 2,
     },
   });

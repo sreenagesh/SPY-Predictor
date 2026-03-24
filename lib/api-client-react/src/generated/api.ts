@@ -17,6 +17,7 @@ import type {
   ErrorResponse,
   GetSpyDataParams,
   HealthStatus,
+  MtfAnalysisResponse,
   OptionsSignalResponse,
   SpyDataResponse,
   SpyPredictionResponse,
@@ -406,6 +407,63 @@ export function useGetIntradaySignal<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetIntradaySignalQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// ─── Multi-Timeframe Analysis ─────────────────────────────────────────────────
+
+export const getGetMtfAnalysisUrl = () => `/api/trading/mtf`;
+
+export const getMtfAnalysis = async (
+  options?: RequestInit,
+): Promise<MtfAnalysisResponse> => {
+  return customFetch<MtfAnalysisResponse>(getGetMtfAnalysisUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMtfAnalysisQueryKey = () =>
+  [`/api/trading/mtf`] as const;
+
+export const getGetMtfAnalysisQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMtfAnalysis>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMtfAnalysis>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetMtfAnalysisQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMtfAnalysis>>
+  > = ({ signal }) => getMtfAnalysis({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMtfAnalysis>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetMtfAnalysis<
+  TData = Awaited<ReturnType<typeof getMtfAnalysis>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMtfAnalysis>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMtfAnalysisQueryOptions(options);
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
   };

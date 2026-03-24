@@ -225,6 +225,84 @@ export interface TradingSignalResponse {
   trade: TradingTradeSetup | null;
 }
 
+// ─── Multi-Timeframe Analysis Types ──────────────────────────────────────────
+
+export interface TimeframeSnapshot {
+  tf: "5m" | "15m" | "1h";
+  score: number;
+  trend: "bullish" | "bearish" | "neutral";
+  ema8: number;
+  ema21: number;
+  emaAligned: boolean;
+  rsi: number;
+  macdHistogram: number;
+  macdSlope: "up" | "down";
+  keyFactor: string;
+  atr: number;
+}
+
+export interface EntryWindow {
+  name: string;
+  isOptimal: boolean;
+  isCaution: boolean;
+  isDanger: boolean;
+  minutesLeft: number | null;
+  advice: string;
+}
+
+export interface SessionLevels {
+  todayOpen: number;
+  sessionHigh: number;
+  sessionLow: number;
+  preMarketHigh: number | null;
+  preMarketLow: number | null;
+  distToHigh: number;
+  distToLow: number;
+}
+
+export interface PivotLevels {
+  support: number[];
+  resistance: number[];
+}
+
+export interface VolumeContext {
+  current: number;
+  average: number;
+  relative: number;
+  expanding: boolean;
+  label: string;
+}
+
+export interface MtfAnalysisResponse {
+  timestamp: string;
+  marketStatus: string;
+  currentPrice: number;
+  timeframes: {
+    "5m": TimeframeSnapshot;
+    "15m": TimeframeSnapshot;
+    "1h": TimeframeSnapshot;
+  };
+  alignment: {
+    score: number;
+    direction: "bullish" | "mixed" | "bearish";
+    label: string;
+    confidence: number;
+  };
+  zeroDTE: {
+    entryQuality: "High" | "Medium" | "Low" | "Avoid";
+    suggestedSide: "CALL" | "PUT" | "WAIT";
+    riskRating: "Low" | "Medium" | "High" | "Extreme";
+    entryWindow: EntryWindow;
+    sessionLevels: SessionLevels;
+    pivots: PivotLevels;
+    volumeContext: VolumeContext;
+    momentumAcceleration: "accelerating" | "steady" | "fading";
+    vixProxy: number;
+    expectedMove: number;
+    tradingAdvice: string[];
+  };
+}
+
 export type GetSpyDataParams = {
   /**
    * Time period for historical data

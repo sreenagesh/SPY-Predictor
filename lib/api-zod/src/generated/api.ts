@@ -188,3 +188,81 @@ const TradingSignalSchema = zod.object({
 
 export const GetIntradaySignalResponse = TradingSignalSchema;
 export const GetSwingSignalResponse = TradingSignalSchema;
+
+// ─── Multi-Timeframe Analysis ─────────────────────────────────────────────────
+
+const TimeframeSnapshotSchema = zod.object({
+  tf: zod.enum(["5m", "15m", "1h"]),
+  score: zod.number(),
+  trend: zod.enum(["bullish", "bearish", "neutral"]),
+  ema8: zod.number(),
+  ema21: zod.number(),
+  emaAligned: zod.boolean(),
+  rsi: zod.number(),
+  macdHistogram: zod.number(),
+  macdSlope: zod.enum(["up", "down"]),
+  keyFactor: zod.string(),
+  atr: zod.number(),
+});
+
+const EntryWindowSchema = zod.object({
+  name: zod.string(),
+  isOptimal: zod.boolean(),
+  isCaution: zod.boolean(),
+  isDanger: zod.boolean(),
+  minutesLeft: zod.number().nullable(),
+  advice: zod.string(),
+});
+
+const SessionLevelsSchema = zod.object({
+  todayOpen: zod.number(),
+  sessionHigh: zod.number(),
+  sessionLow: zod.number(),
+  preMarketHigh: zod.number().nullable(),
+  preMarketLow: zod.number().nullable(),
+  distToHigh: zod.number(),
+  distToLow: zod.number(),
+});
+
+const PivotLevelsSchema = zod.object({
+  support: zod.array(zod.number()),
+  resistance: zod.array(zod.number()),
+});
+
+const VolumeContextSchema = zod.object({
+  current: zod.number(),
+  average: zod.number(),
+  relative: zod.number(),
+  expanding: zod.boolean(),
+  label: zod.string(),
+});
+
+export const GetMtfAnalysisResponse = zod.object({
+  timestamp: zod.string(),
+  marketStatus: zod.string(),
+  currentPrice: zod.number(),
+  timeframes: zod.object({
+    "5m": TimeframeSnapshotSchema,
+    "15m": TimeframeSnapshotSchema,
+    "1h": TimeframeSnapshotSchema,
+  }),
+  alignment: zod.object({
+    score: zod.number(),
+    direction: zod.enum(["bullish", "mixed", "bearish"]),
+    label: zod.string(),
+    confidence: zod.number(),
+  }),
+  zeroDTE: zod.object({
+    entryQuality: zod.enum(["High", "Medium", "Low", "Avoid"]),
+    suggestedSide: zod.enum(["CALL", "PUT", "WAIT"]),
+    riskRating: zod.enum(["Low", "Medium", "High", "Extreme"]),
+    entryWindow: EntryWindowSchema,
+    sessionLevels: SessionLevelsSchema,
+    pivots: PivotLevelsSchema,
+    volumeContext: VolumeContextSchema,
+    momentumAcceleration: zod.enum(["accelerating", "steady", "fading"]),
+    vixProxy: zod.number(),
+    expectedMove: zod.number(),
+    tradingAdvice: zod.array(zod.string()),
+  }),
+});

@@ -91,6 +91,32 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `artifacts/spy-predictor` (`@workspace/spy-predictor`)
+
+React + Vite SPY ETF prediction dashboard with dark financial terminal theme.
+
+**API Endpoints** (all under `/api/trading/`):
+- `GET /api/trading/intraday` — 5-min bar scalp signal (CALL/PUT/WAIT, 0-1 DTE ATM options, 1.5×/2.5× targets, −30% stop)
+- `GET /api/trading/swing` — Daily bar BTST signal (slightly OTM, 3-7 DTE Friday expiry, 2×/4× targets, −50% stop)
+- `GET /api/trading/mtf` — Multi-timeframe analysis (5m + 15m + 1h scores, MTF alignment, 0DTE intelligence)
+
+**Key backend files:**
+- `artifacts/api-server/src/lib/intraday-signal.ts` — 5-min scalp engine
+- `artifacts/api-server/src/lib/swing-signal.ts` — swing/BTST engine
+- `artifacts/api-server/src/lib/mtf-analysis.ts` — MTF + 0DTE intelligence (entry windows, session levels, pivots, volume, VIX proxy)
+- `artifacts/api-server/src/lib/spy-data.ts` — `computeMomentumScore()` runs on any OHLCV bar array (5m/15m/1h/daily)
+- `artifacts/api-server/src/lib/market-utils.ts` — DST-aware EST market hours, expiry helpers
+
+**Frontend components:**
+- `trading-signal.tsx` — Mode-switching CALL/PUT/WAIT card with countdown, premium/underlying levels
+- `mtf-panel.tsx` — 3-column TF comparison + alignment gauge + full 0DTE intelligence section
+
+**Signal logic:** EMA 8/21 crossover (±30), EMA8 slope (±18), recent 5 candles (±20), price vs EMA8 (±15), MACD histogram+slope (±18), RSI extremes (±14). Score −100 to +100.
+
+**0DTE entry windows (EST):**
+- PRIME: 9:45–10:30 AM (first trend) and 2:30–3:00 PM (final push)
+- AVOID: 9:30–9:45 (opening chaos), 12:00–1:30 PM (lunch), 3:30+ (gamma danger)
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.

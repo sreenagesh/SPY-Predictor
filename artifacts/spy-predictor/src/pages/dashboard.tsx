@@ -5,6 +5,7 @@ import {
   useSpyPrediction,
   useIntradaySignal,
   useSwingSignal,
+  useMtfAnalysis,
   type TimePeriod,
 } from "@/hooks/use-spy";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { IndicatorsGrid } from "@/components/indicators-grid";
 import { PriceTargetsCard } from "@/components/price-targets";
 import { ScalpTargetsCard } from "@/components/scalp-targets";
 import { TradingSignalCard } from "@/components/trading-signal";
+import { MtfPanel } from "@/components/mtf-panel";
 import { LoadingSpinner } from "@/components/ui-elements";
 
 export default function Dashboard() {
@@ -23,6 +25,7 @@ export default function Dashboard() {
   const { data: prediction, isLoading: loadingPrediction, error: predError } = useSpyPrediction();
   const { data: intradaySignal, isLoading: loadingIntraday } = useIntradaySignal();
   const { data: swingSignal, isLoading: loadingSwing } = useSwingSignal();
+  const { data: mtfData, isLoading: loadingMtf } = useMtfAnalysis();
 
   const isError = dataError || predError;
   const isLoading = loadingData || loadingPrediction;
@@ -182,6 +185,16 @@ export default function Dashboard() {
               />
             </motion.div>
           )}
+
+          {/* ── Multi-Timeframe + 0DTE Intelligence ── */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.6 }}
+            className="col-span-1 lg:col-span-12"
+          >
+            <MtfPanel data={mtfData} isLoading={loadingMtf} />
+          </motion.div>
         </div>
       )}
     </div>
