@@ -140,6 +140,7 @@ export default function Dashboard() {
                 prediction={prediction.prediction as any}
                 confidence={prediction.confidence}
                 summary={prediction.summary}
+                updatedAt={prediction.timestamp}
               />
             </motion.div>
           )}
