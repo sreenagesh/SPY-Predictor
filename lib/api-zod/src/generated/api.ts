@@ -140,6 +140,42 @@ export const GetSpyPredictionResponse = zod.object({
     }),
     notes: zod.string().describe("Brief rationale for today's scalp bias"),
   }),
+  trendStrength: zod.object({
+    label: zod.string(),
+    score: zod.number().describe("Trend strength score -100 (strong bear) to +100 (strong bull)"),
+    direction: zod.enum(["bullish", "bearish", "neutral"]),
+    components: zod.array(zod.object({
+      name: zod.string(),
+      value: zod.string(),
+      contribution: zod.number(),
+    })),
+  }),
+  wyckoffPhase: zod.object({
+    phase: zod.string(),
+    subPhase: zod.string(),
+    description: zod.string(),
+    bias: zod.enum(["bullish", "bearish", "neutral"]),
+    pricePosition: zod.number().describe("Price position in recent range 0=lows, 1=highs"),
+  }),
+  marketStructure: zod.object({
+    reversalLevels: zod.array(zod.object({
+      label: zod.string(),
+      price: zod.number(),
+      type: zod.enum(["support", "resistance"]),
+      significance: zod.number(),
+    })),
+    targets: zod.object({
+      t1: zod.number(),
+      t2: zod.number(),
+      t3: zod.number(),
+      direction: zod.enum(["up", "down", "neutral"]),
+    }),
+    nearestLevel: zod.object({
+      label: zod.string(),
+      price: zod.number(),
+      type: zod.enum(["support", "resistance"]),
+    }).nullable(),
+  }),
 });
 
 const OhlcvBarSchema = zod.object({

@@ -102,6 +102,49 @@ export interface IntradayScalpTargets {
   notes: string;
 }
 
+export interface TrendStrengthComponent {
+  name: string;
+  value: string;
+  contribution: number;
+}
+
+export interface TrendStrength {
+  label: string;
+  /** Trend strength score -100 (strong bear) to +100 (strong bull) */
+  score: number;
+  direction: "bullish" | "bearish" | "neutral";
+  components: TrendStrengthComponent[];
+}
+
+export interface WyckoffPhase {
+  phase: string;
+  subPhase: string;
+  description: string;
+  bias: "bullish" | "bearish" | "neutral";
+  /** Price position in recent range 0=lows, 1=highs */
+  pricePosition: number;
+}
+
+export interface ReversalLevel {
+  label: string;
+  price: number;
+  type: "support" | "resistance";
+  significance: number;
+}
+
+export interface PriceTargetLevels {
+  t1: number;
+  t2: number;
+  t3: number;
+  direction: "up" | "down" | "neutral";
+}
+
+export interface MarketStructure {
+  reversalLevels: ReversalLevel[];
+  targets: PriceTargetLevels;
+  nearestLevel: { label: string; price: number; type: "support" | "resistance" } | null;
+}
+
 export interface SpyPredictionResponse {
   symbol: string;
   timestamp: string;
@@ -114,6 +157,9 @@ export interface SpyPredictionResponse {
   indicators: IndicatorValue[];
   priceTargets: PriceTargets;
   scalpTargets: IntradayScalpTargets;
+  trendStrength: TrendStrength;
+  wyckoffPhase: WyckoffPhase;
+  marketStructure: MarketStructure;
 }
 
 export type OptionsTradeSetupSide =

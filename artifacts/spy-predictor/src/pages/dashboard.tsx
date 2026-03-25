@@ -127,9 +127,7 @@ export default function Dashboard() {
               className="col-span-1 lg:col-span-4 flex flex-col"
             >
               <PredictionWidget
-                prediction={prediction.prediction as any}
-                confidence={prediction.confidence}
-                summary={prediction.summary}
+                prediction={prediction as any}
                 updatedAt={prediction.timestamp}
               />
             </motion.div>
