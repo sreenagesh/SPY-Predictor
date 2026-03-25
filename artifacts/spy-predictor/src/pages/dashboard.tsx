@@ -129,6 +129,7 @@ export default function Dashboard() {
               <PredictionWidget
                 prediction={prediction as any}
                 updatedAt={prediction.timestamp}
+                swingSignal={swingSignal as any}
               />
             </motion.div>
           )}
