@@ -33,54 +33,96 @@ function estimateSwingPremium(
   return Math.max(intrinsic + timeValue, 0.10);
 }
 
-async function fetchSwingOptions(
-  currentPrice: number,
-  side: "CALL" | "PUT"
-): Promise<{
+type SwingContract = {
   strike: number; expiration: string; daysToExpiry: number;
   premiumEntry: number; impliedVolatility: number | null;
   delta: number | null; openInterest: number | null; volume: number | null;
-} | null> {
+};
+
+async function fetchSwingOptions(
+  currentPrice: number,
+  side: "CALL" | "PUT",
+): Promise<SwingContract | null> {
+  const expiry = getSwingExpiry(3); // 3–7 DTE Friday
+  const dte = daysUntil(expiry);
+  const isCall = side === "CALL";
+  const expiryStr = expiry.toISOString().split("T")[0];
+  // Slightly OTM for swing
+  const otmOffset = isCall ? 1 : -1;
+  const targetStrike = Math.round(currentPrice) + otmOffset;
+
+  // ── 1. Tradier real-time chain ──────────────────────────────────────────────
+  const TRADIER_TOKEN = process.env.TRADIER_API_KEY;
+  if (TRADIER_TOKEN) {
+    try {
+      const url = `https://api.tradier.com/v1/markets/options/chains?symbol=SPY&expiration=${expiryStr}&greeks=true`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${TRADIER_TOKEN}`, Accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const options: any[] = json?.options?.option ?? [];
+        const sideOpts = options.filter((o: any) => o.option_type === (isCall ? "call" : "put"));
+        const sorted = [...sideOpts].sort(
+          (a: any, b: any) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike),
+        );
+        for (const opt of sorted.slice(0, 5)) {
+          const bid: number = opt.bid ?? 0;
+          const ask: number = opt.ask ?? 0;
+          const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
+          const last: number = opt.last ?? 0;
+          const iv: number | null = opt.greeks?.mid_iv ?? opt.greeks?.ask_iv ?? null;
+          const premiumEntry = mid > 0 ? mid : last > 0 ? last :
+            estimateSwingPremium(currentPrice, opt.strike, isCall, dte);
+          return {
+            strike: opt.strike,
+            expiration: expiryStr,
+            daysToExpiry: dte,
+            premiumEntry: Math.round(premiumEntry * 100) / 100,
+            impliedVolatility: iv != null ? Math.round(iv * 10000) / 100 : null,
+            delta: opt.greeks?.delta != null ? Math.round(opt.greeks.delta * 1000) / 1000 : null,
+            openInterest: opt.open_interest ?? null,
+            volume: opt.volume ?? null,
+          };
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  // ── 2. Yahoo Finance fallback — skip zero-priced contracts ─────────────────
   try {
-    const expiry = getSwingExpiry(3); // 3+ DTE Friday
-    const dte = daysUntil(expiry);
-    const isCall = side === "CALL";
-
-    // Slightly OTM for swing — more leverage
-    const otmOffset = isCall ? 1 : -1;
-    const targetStrike = Math.round(currentPrice) + otmOffset;
-
     const optionsData = await yahooFinance.options("SPY");
     if (!optionsData?.options?.length) return null;
-
     const chain = optionsData.options[0];
     const contracts = isCall ? chain.calls : chain.puts;
     if (!contracts?.length) return null;
-
     const sorted = [...contracts].sort(
-      (a, b) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike)
+      (a, b) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike),
     );
-    const best = sorted[0];
-    if (!best) return null;
+    for (const best of sorted.slice(0, 5)) {
+      const bid = best.bid ?? 0;
+      const ask = best.ask ?? 0;
+      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
+      const last = best.lastPrice ?? 0;
+      if (mid === 0 && last === 0) continue;
+      const premiumEntry = mid > 0 ? mid : last > 0 ? last :
+        estimateSwingPremium(currentPrice, best.strike, isCall, dte);
+      return {
+        strike: best.strike,
+        expiration: expiryStr,
+        daysToExpiry: dte,
+        premiumEntry: Math.round(premiumEntry * 100) / 100,
+        impliedVolatility: best.impliedVolatility != null && best.impliedVolatility > 0
+          ? Math.round(best.impliedVolatility * 10000) / 100 : null,
+        delta: "delta" in best && (best as any).delta != null
+          ? Math.round((best as any).delta * 1000) / 1000 : null,
+        openInterest: best.openInterest ?? null,
+        volume: best.volume ?? null,
+      };
+    }
+  } catch { /* fall through */ }
 
-    const ask = best.ask ?? best.lastPrice ??
-      estimateSwingPremium(currentPrice, best.strike, isCall, dte);
-
-    return {
-      strike: best.strike,
-      expiration: expiry.toISOString().split("T")[0],
-      daysToExpiry: dte,
-      premiumEntry: Math.round(ask * 100) / 100,
-      impliedVolatility: best.impliedVolatility != null
-        ? Math.round(best.impliedVolatility * 10000) / 100 : null,
-      delta: "delta" in best && best.delta != null
-        ? Math.round((best as any).delta * 1000) / 1000 : null,
-      openInterest: best.openInterest ?? null,
-      volume: best.volume ?? null,
-    };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export async function computeSwingSignal(): Promise<TradingSignal> {

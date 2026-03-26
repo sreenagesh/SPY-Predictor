@@ -47,22 +47,83 @@ function estimateIntradayPremium(
   return Math.max(intrinsic + timeValue, 0.10);
 }
 
-async function fetchIntradayOptions(
-  currentPrice: number,
-  side: "CALL" | "PUT"
-): Promise<{
+type OptionContract = {
   strike: number; expiration: string; daysToExpiry: number;
   premiumEntry: number; impliedVolatility: number | null;
   delta: number | null; openInterest: number | null; volume: number | null;
-} | null> {
+};
+
+/** Use Tradier real-time chain — returns live bid/ask with Greeks */
+async function fetchOptionViaTradier(
+  currentPrice: number,
+  side: "CALL" | "PUT",
+  expiry: Date,
+  dte: number,
+): Promise<OptionContract | null> {
+  const TRADIER_TOKEN = process.env.TRADIER_API_KEY;
+  if (!TRADIER_TOKEN) return null;
+
+  const expiryStr = expiry.toISOString().split("T")[0];
+  const url = `https://api.tradier.com/v1/markets/options/chains?symbol=SPY&expiration=${expiryStr}&greeks=true`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${TRADIER_TOKEN}`, Accept: "application/json" },
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+
+  const options: any[] = json?.options?.option ?? [];
+  if (!options.length) return null;
+
+  const isCall = side === "CALL";
+  const sideOptions = options.filter(
+    (o: any) => o.option_type === (isCall ? "call" : "put"),
+  );
+
+  // Nearest ATM strike with a valid mid-price
+  const targetStrike = Math.round(currentPrice);
+  const sorted = [...sideOptions].sort(
+    (a: any, b: any) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike),
+  );
+
+  // Walk strikes until we find one with real bid/ask
+  for (const opt of sorted.slice(0, 5)) {
+    const bid: number = opt.bid ?? 0;
+    const ask: number = opt.ask ?? 0;
+    const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
+    const last: number = opt.last ?? 0;
+    const iv: number | null = opt.greeks?.mid_iv ?? opt.greeks?.ask_iv ?? null;
+
+    const premiumEntry = mid > 0
+      ? mid
+      : last > 0
+        ? last
+        : estimateIntradayPremium(currentPrice, opt.strike, isCall, dte);
+
+    return {
+      strike: opt.strike,
+      expiration: expiryStr,
+      daysToExpiry: dte,
+      premiumEntry: Math.round(premiumEntry * 100) / 100,
+      impliedVolatility: iv != null ? Math.round(iv * 10000) / 100 : null,
+      delta: opt.greeks?.delta != null ? Math.round(opt.greeks.delta * 1000) / 1000 : null,
+      openInterest: opt.open_interest ?? null,
+      volume: opt.volume ?? null,
+    };
+  }
+  return null;
+}
+
+/** Yahoo Finance fallback — guards against ask=0 with explicit >0 checks */
+async function fetchOptionViaYahoo(
+  currentPrice: number,
+  side: "CALL" | "PUT",
+  expiry: Date,
+  dte: number,
+): Promise<OptionContract | null> {
   try {
-    const expiry = getNextSpyExpiry(0); // 0+ DTE — can be today (0DTE)
-    const dte = Math.max(daysUntil(expiry), 0);
     const isCall = side === "CALL";
-
-    // ATM strike
     const targetStrike = Math.round(currentPrice);
-
     const optionsData = await yahooFinance.options("SPY");
     if (!optionsData?.options?.length) return null;
 
@@ -71,29 +132,53 @@ async function fetchIntradayOptions(
     if (!contracts?.length) return null;
 
     const sorted = [...contracts].sort(
-      (a, b) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike)
+      (a, b) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike),
     );
-    const best = sorted[0];
-    if (!best) return null;
 
-    const ask = best.ask ?? best.lastPrice ??
-      estimateIntradayPremium(currentPrice, best.strike, isCall, dte);
+    for (const best of sorted.slice(0, 5)) {
+      const bid = best.bid ?? 0;
+      const ask = best.ask ?? 0;
+      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
+      const last = best.lastPrice ?? 0;
 
-    return {
-      strike: best.strike,
-      expiration: expiry.toISOString().split("T")[0],
-      daysToExpiry: dte,
-      premiumEntry: Math.round(ask * 100) / 100,
-      impliedVolatility: best.impliedVolatility != null
-        ? Math.round(best.impliedVolatility * 10000) / 100 : null,
-      delta: "delta" in best && best.delta != null
-        ? Math.round((best as any).delta * 1000) / 1000 : null,
-      openInterest: best.openInterest ?? null,
-      volume: best.volume ?? null,
-    };
+      // Skip zero-priced contracts entirely
+      if (mid === 0 && last === 0) continue;
+
+      const premiumEntry = mid > 0 ? mid : last > 0 ? last :
+        estimateIntradayPremium(currentPrice, best.strike, isCall, dte);
+
+      return {
+        strike: best.strike,
+        expiration: expiry.toISOString().split("T")[0],
+        daysToExpiry: dte,
+        premiumEntry: Math.round(premiumEntry * 100) / 100,
+        impliedVolatility: best.impliedVolatility != null && best.impliedVolatility > 0
+          ? Math.round(best.impliedVolatility * 10000) / 100 : null,
+        delta: "delta" in best && (best as any).delta != null
+          ? Math.round((best as any).delta * 1000) / 1000 : null,
+        openInterest: best.openInterest ?? null,
+        volume: best.volume ?? null,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
+}
+
+async function fetchIntradayOptions(
+  currentPrice: number,
+  side: "CALL" | "PUT",
+): Promise<OptionContract | null> {
+  const expiry = getNextSpyExpiry(0); // 0+ DTE — can be today (0DTE)
+  const dte = Math.max(daysUntil(expiry), 0);
+
+  // 1️⃣ Tradier real-time (most accurate — has live bid/ask + Greeks)
+  const tradier = await fetchOptionViaTradier(currentPrice, side, expiry, dte);
+  if (tradier) return tradier;
+
+  // 2️⃣ Yahoo Finance (skips zero-priced contracts)
+  return fetchOptionViaYahoo(currentPrice, side, expiry, dte);
 }
 
 export interface TradingTradeSetup {
