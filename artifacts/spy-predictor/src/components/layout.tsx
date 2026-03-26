@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, LayoutDashboard, Settings, TrendingUp } from "lucide-react";
+import { Activity, LayoutDashboard, Settings, TrendingUp, ClipboardList } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -11,10 +11,11 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
 
   const navItems = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Analysis", href: "/analysis", icon: Activity },
-    { name: "Models", href: "/models", icon: TrendingUp },
-    { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Dashboard", href: "/",        icon: LayoutDashboard },
+    { name: "History",   href: "/history", icon: ClipboardList },
+    { name: "Analysis",  href: "/analysis", icon: Activity },
+    { name: "Models",    href: "/models",   icon: TrendingUp },
+    { name: "Settings",  href: "/settings", icon: Settings },
   ];
 
   return (
