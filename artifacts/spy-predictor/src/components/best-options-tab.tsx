@@ -281,11 +281,43 @@ export function BestOptionsTab({ data, isLoading, isError, onRefresh }: BestOpti
 
   if (isError || !data) {
     return (
-      <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 flex items-start gap-3 text-muted-foreground">
-        <AlertCircle className="w-5 h-5 text-destructive/70 mt-0.5 flex-shrink-0" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">Unable to scan options</p>
-          <p className="text-sm">Check that your Tradier API key is valid and market data is available.</p>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 flex items-start gap-3">
+          <RefreshCw className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0 animate-spin" />
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-foreground">Scanner warming up…</p>
+            <p className="text-sm text-muted-foreground">
+              The first scan takes ~15 seconds as we pull live options chains from Tradier for all 12 tickers.
+              It auto-retries — or click Refresh below.
+            </p>
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                className="flex items-center gap-2 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors mt-2 px-3 py-1.5 rounded-lg border border-amber-500/30 hover:border-amber-400/50"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Refresh scan now
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Skeleton placeholders */}
+        <div className="space-y-3">
+          <div className="h-4 bg-white/5 rounded w-40 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-56 rounded-2xl bg-white/5 animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="h-4 bg-white/5 rounded w-32 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-56 rounded-2xl bg-white/5 animate-pulse" style={{ animationDelay: `${i * 0.15 + 0.5}s` }} />
+            ))}
+          </div>
         </div>
       </div>
     );

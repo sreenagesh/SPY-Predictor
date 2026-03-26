@@ -74,12 +74,16 @@ export function useMtfAnalysis() {
 }
 
 // Best Options Scanner — refreshes every 10 minutes (Tradier rate-limit friendly)
+// Server caches results, so fast responses after the first warm-up.
 export function useBestOptions() {
   return useGetBestOptions({
     query: {
       refetchInterval: 10 * 60 * 1000,
-      staleTime: 5 * 60 * 1000,
-      retry: 2,
+      staleTime: 60 * 1000,
+      retry: 3,
+      retryDelay: (attempt) => Math.min(8000 * (attempt + 1), 30_000),
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
     },
   });
 }

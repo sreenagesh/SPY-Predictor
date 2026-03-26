@@ -409,17 +409,95 @@ async function runBestOptionsScanner(): Promise<{
   };
 }
 
+// ─── In-memory cache ──────────────────────────────────────────────────────────
+
+interface CacheEntry {
+  data: Awaited<ReturnType<typeof runBestOptionsScanner>>;
+  cachedAt: number;
+}
+
+let cache: CacheEntry | null = null;
+let scanInProgress = false;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function getScanResult(force = false): Promise<CacheEntry["data"]> {
+  const now = Date.now();
+  const isFresh = cache && (now - cache.cachedAt) < CACHE_TTL_MS;
+
+  if (isFresh && !force) {
+    return cache!.data;
+  }
+
+  // If a scan is already running, wait up to 30s for it to finish
+  if (scanInProgress) {
+    const deadline = now + 30_000;
+    while (scanInProgress && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (cache) return cache.data;
+  }
+
+  // Run a fresh scan
+  scanInProgress = true;
+  try {
+    const result = await runBestOptionsScanner();
+    cache = { data: result, cachedAt: Date.now() };
+    return result;
+  } finally {
+    scanInProgress = false;
+  }
+}
+
+// Trigger a background refresh (fire-and-forget, ignores errors)
+function backgroundRefresh() {
+  if (scanInProgress) return;
+  getScanResult(true).catch(err =>
+    console.error("[best-options] background refresh error:", err)
+  );
+}
+
+// ─── Pre-warm cache 8 seconds after server starts ─────────────────────────────
+if (TRADIER_TOKEN) {
+  setTimeout(() => {
+    console.log("[best-options] Pre-warming scanner cache…");
+    getScanResult(true)
+      .then(r => console.log(`[best-options] Cache ready — ${r.intraday.length} intraday, ${r.weekly.length} weekly picks`))
+      .catch(err => console.error("[best-options] Pre-warm error:", err));
+  }, 8_000);
+
+  // Refresh every 9 minutes automatically
+  setInterval(backgroundRefresh, 9 * 60 * 1000);
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-router.get("/best-options", async (_req, res) => {
+router.get("/best-options", async (req, res) => {
   try {
     if (!TRADIER_TOKEN) {
       return res.status(503).json({ error: "Tradier API key not configured" });
     }
-    const result = await runBestOptionsScanner();
+
+    const force = req.query.force === "true";
+
+    // If cache is stale, return stale data immediately and kick off a background refresh
+    const now = Date.now();
+    if (cache && !force) {
+      const age = now - cache.cachedAt;
+      if (age > CACHE_TTL_MS && !scanInProgress) {
+        backgroundRefresh();
+      }
+      return res.json({ ...cache.data, fromCache: true, cacheAgeMs: age });
+    }
+
+    // No cache yet or force refresh — wait for the scan (first boot scenario)
+    const result = await getScanResult(force);
     res.json(result);
   } catch (err) {
     console.error("[best-options]", err);
+    // Return stale cache if available rather than a hard error
+    if (cache) {
+      return res.json({ ...cache.data, fromCache: true, error: "Scan failed, showing last known data" });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Scanner error" });
   }
 });
