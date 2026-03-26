@@ -120,6 +120,8 @@ export default function Dashboard() {
                 period={period}
                 onPeriodChange={setPeriod}
                 isLoading={loadingData}
+                priceChange={spyData.priceChange}
+                priceChangePct={spyData.priceChangePct}
               />
             </motion.div>
           )}

@@ -391,14 +391,150 @@ function computeMarketStructure(
   };
 }
 
+// ─── Tradier timesales (intraday bars) ─────────────────────────────────────────
+
+function toEtString(d: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`;
+}
+
+async function fetchTradierTimesales(
+  intervalStr: "1min" | "5min",
+  hoursBack: number,
+  limitBars?: number,
+): Promise<OhlcvBar[]> {
+  const TRADIER_TOKEN = process.env.TRADIER_API_KEY;
+  if (!TRADIER_TOKEN) return [];
+
+  const now = new Date();
+  const from = new Date(now.getTime() - hoursBack * 3600 * 1000);
+  const start = toEtString(from);
+  const end = toEtString(now);
+
+  try {
+    const url = `https://api.tradier.com/v1/markets/timesales?symbol=SPY&interval=${intervalStr}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&session_filter=open`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${TRADIER_TOKEN}`, Accept: "application/json" },
+    });
+    if (!response.ok) return [];
+    const json = await response.json();
+    const series = json?.series?.data;
+    if (!series) return [];
+    const arr: any[] = Array.isArray(series) ? series : [series];
+    const bars = arr.map((bar) => ({
+      date: bar.time,
+      open: bar.open ?? bar.price,
+      high: bar.high ?? bar.price,
+      low: bar.low ?? bar.price,
+      close: bar.close ?? bar.price,
+      volume: bar.volume ?? 0,
+    }));
+    return limitBars ? bars.slice(-limitBars) : bars;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchYFIntraday(intervalStr: "1m" | "5m", hoursBack: number): Promise<OhlcvBar[]> {
+  const now = new Date();
+  const from = new Date(now.getTime() - hoursBack * 3600 * 1000);
+  try {
+    const result = await yf.chart("SPY", { period1: from, period2: now, interval: intervalStr });
+    return (result?.quotes ?? [])
+      .filter((q: any) => q.close != null)
+      .map((q: any) => ({
+        date: new Date(q.date).toISOString(),
+        open: q.open ?? q.close,
+        high: q.high ?? q.close,
+        low: q.low ?? q.close,
+        close: q.close,
+        volume: q.volume ?? 0,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchIntradayBars(period: "1h" | "1d" | "1w"): Promise<OhlcvBar[]> {
+  // 1W — Yahoo Finance hourly bars for the past 5 trading days
+  if (period === "1w") {
+    return fetchHourlyBars(5);
+  }
+
+  if (period === "1h") {
+    // Try Tradier: last 2 days of 1-min bars, take the last 90 (= ~90 min of market activity)
+    let bars = await fetchTradierTimesales("1min", 48, 90);
+    if (bars.length < 3) {
+      // Fallback: Yahoo Finance 1-min bars for last 3 days
+      bars = await fetchYFIntraday("1m", 72);
+      bars = bars.slice(-90); // last 90 traded bars
+    }
+    return bars;
+  }
+
+  // period === "1d": 5-min bars for the most recent full session
+  let bars = await fetchTradierTimesales("5min", 48);
+  // Keep only the most recent calendar day that has data
+  if (bars.length > 0) {
+    const lastDate = bars[bars.length - 1].date.slice(0, 10);
+    bars = bars.filter((b) => b.date.startsWith(lastDate));
+  }
+  if (bars.length < 3) {
+    // Fallback: Yahoo Finance 5-min bars for last 2 days
+    bars = await fetchYFIntraday("5m", 48);
+    if (bars.length > 0) {
+      const lastDate = bars[bars.length - 1].date.slice(0, 10);
+      bars = bars.filter((b) => b.date.startsWith(lastDate));
+    }
+  }
+  return bars;
+}
+
 // ─── Data routes ───────────────────────────────────────────────────────────────
 
 router.get("/spy/data", async (req, res): Promise<void> => {
   try {
     const period = (req.query.period as string) || "6mo";
-    const validPeriods = ["1mo", "3mo", "6mo", "1y", "2y"];
-    const safePeriod = validPeriods.includes(period) ? period : "6mo";
+    const intradayPeriods = ["1h", "1d", "1w"] as const;
+    const longPeriods = ["1mo", "3mo", "6mo", "1y", "2y"];
 
+    // ── Intraday / short-term periods via Tradier/Yahoo hourly ─────────────
+    if ((intradayPeriods as readonly string[]).includes(period)) {
+      const safePeriod = period as "1h" | "1d" | "1w";
+      const bars = await fetchIntradayBars(safePeriod);
+
+      if (bars.length === 0) {
+        res.status(500).json({ error: "No intraday data available" });
+        return;
+      }
+
+      const firstClose = bars[0].close;
+      const lastClose = bars[bars.length - 1].close;
+      const priceChange = lastClose - firstClose;
+      const priceChangePct = (priceChange / firstClose) * 100;
+
+      res.json({
+        symbol: "SPY",
+        period: safePeriod,
+        bars,
+        currentPrice: lastClose,
+        priceChange,
+        priceChangePct,
+      });
+      return;
+    }
+
+    // ── Historical daily bars ──────────────────────────────────────────────
+    const safePeriod = longPeriods.includes(period) ? period : "6mo";
     const bars = await fetchSpyHistory(safePeriod);
 
     if (bars.length === 0) {

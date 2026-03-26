@@ -425,6 +425,9 @@ export type GetSpyDataPeriod =
   (typeof GetSpyDataPeriod)[keyof typeof GetSpyDataPeriod];
 
 export const GetSpyDataPeriod = {
+  "1h": "1h",
+  "1d": "1d",
+  "1w": "1w",
   "1mo": "1mo",
   "3mo": "3mo",
   "6mo": "6mo",

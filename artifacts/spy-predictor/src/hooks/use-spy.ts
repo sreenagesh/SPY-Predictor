@@ -8,15 +8,29 @@ import {
   useGetBestOptions,
 } from "@workspace/api-client-react";
 
-export type TimePeriod = "1mo" | "3mo" | "6mo" | "1y" | "2y";
+export type TimePeriod = "1h" | "1d" | "1w" | "1mo" | "3mo" | "6mo" | "1y" | "2y";
+export const INTRADAY_PERIODS: TimePeriod[] = ["1h", "1d", "1w"];
+export const HISTORICAL_PERIODS: TimePeriod[] = ["1mo", "3mo", "6mo", "1y", "2y"];
+
+const REFETCH_MS: Record<TimePeriod, number> = {
+  "1h":  60 * 1000,          // 1-min bars → refetch every 60s
+  "1d":  5 * 60 * 1000,      // 5-min bars → refetch every 5 min
+  "1w":  15 * 60 * 1000,     // 1-hr bars  → refetch every 15 min
+  "1mo": 5 * 60 * 1000,
+  "3mo": 5 * 60 * 1000,
+  "6mo": 5 * 60 * 1000,
+  "1y":  5 * 60 * 1000,
+  "2y":  5 * 60 * 1000,
+};
 
 export function useSpyData(period: TimePeriod = "6mo") {
   return useGetSpyData(
     { period },
     {
       query: {
-        staleTime: 60000,
-        refetchOnWindowFocus: false,
+        staleTime: REFETCH_MS[period] / 2,
+        refetchInterval: REFETCH_MS[period],
+        refetchOnWindowFocus: INTRADAY_PERIODS.includes(period),
       },
     }
   );
