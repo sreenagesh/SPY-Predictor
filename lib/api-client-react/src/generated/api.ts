@@ -14,6 +14,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  BestOptionsResponse,
   ErrorResponse,
   GetSpyDataParams,
   HealthStatus,
@@ -521,6 +522,63 @@ export function useGetSwingSignal<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetSwingSignalQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// ─── Best Options Scanner ─────────────────────────────────────────────────────
+
+export const getGetBestOptionsUrl = () => `/api/best-options`;
+
+export const getBestOptions = async (
+  options?: RequestInit,
+): Promise<BestOptionsResponse> => {
+  return customFetch<BestOptionsResponse>(getGetBestOptionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBestOptionsQueryKey = () =>
+  [`/api/best-options`] as const;
+
+export const getGetBestOptionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBestOptions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBestOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetBestOptionsQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBestOptions>>
+  > = ({ signal }) => getBestOptions({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBestOptions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetBestOptions<
+  TData = Awaited<ReturnType<typeof getBestOptions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBestOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBestOptionsQueryOptions(options);
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
   };

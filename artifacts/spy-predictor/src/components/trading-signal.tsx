@@ -2,16 +2,23 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, TrendingUp, Clock, Calendar, AlertCircle,
-  Shield, Target, ChevronDown, ChevronUp, Info,
+  Shield, Target, ChevronDown, ChevronUp, Info, Trophy,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import type { TradingSignalResponse } from "@workspace/api-client-react";
+import type { TradingSignalResponse, BestOptionsResponse } from "@workspace/api-client-react";
+import { BestOptionsTab } from "./best-options-tab";
+
+type ActiveMode = "intraday" | "swing" | "best";
 
 interface TradingSignalCardProps {
   intradaySignal: TradingSignalResponse | undefined;
   swingSignal: TradingSignalResponse | undefined;
   isLoadingIntraday: boolean;
   isLoadingSwing: boolean;
+  bestOptionsData?: BestOptionsResponse;
+  isLoadingBestOptions?: boolean;
+  isBestOptionsError?: boolean;
+  onRefreshBestOptions?: () => void;
   onModeChange?: (mode: "intraday" | "swing") => void;
 }
 
@@ -328,57 +335,80 @@ export function TradingSignalCard({
   swingSignal,
   isLoadingIntraday,
   isLoadingSwing,
+  bestOptionsData,
+  isLoadingBestOptions,
+  isBestOptionsError,
+  onRefreshBestOptions,
   onModeChange,
 }: TradingSignalCardProps) {
-  const [mode, setMode] = useState<"intraday" | "swing">("intraday");
+  const [mode, setMode] = useState<ActiveMode>("intraday");
 
-  const handleModeChange = (m: "intraday" | "swing") => {
+  const handleModeChange = (m: ActiveMode) => {
     setMode(m);
-    onModeChange?.(m);
+    if (m === "intraday" || m === "swing") onModeChange?.(m);
   };
 
-  const signal = mode === "intraday" ? intradaySignal : swingSignal;
-  const isLoading = mode === "intraday" ? isLoadingIntraday : isLoadingSwing;
+  const signal = mode === "intraday" ? intradaySignal : mode === "swing" ? swingSignal : undefined;
+  const isLoading = mode === "intraday" ? isLoadingIntraday : mode === "swing" ? isLoadingSwing : false;
+
+  const tabs: { key: ActiveMode; label: string; icon: React.ElementType; hint: string }[] = [
+    { key: "intraday", label: "Intraday Scalp", icon: Zap, hint: "ATM · 0-1 DTE · T1 +50% · T2 +150% · Stop −30%" },
+    { key: "swing",    label: "Swing / BTST",   icon: TrendingUp, hint: "OTM · 3-7 DTE · T1 +100% · T2 +300% · Stop −50%" },
+    { key: "best",     label: "Best Options",   icon: Trophy, hint: "Multi-ticker scanner · Live Tradier data" },
+  ];
+
+  const activeHint = tabs.find(t => t.key === mode)?.hint ?? "";
 
   return (
     <div className="space-y-3">
       {/* Mode tabs */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1 p-1 bg-secondary/40 rounded-xl">
-          <button
-            onClick={() => handleModeChange("intraday")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              mode === "intraday"
-                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            Intraday Scalp
-          </button>
-          <button
-            onClick={() => handleModeChange("swing")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-              mode === "swing"
-                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            Swing / BTST
-          </button>
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            const isActive = mode === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => handleModeChange(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  isActive
+                    ? tab.key === "best"
+                      ? "bg-yellow-500/20 text-yellow-300 shadow-lg shadow-yellow-500/10 border border-yellow-500/20"
+                      : "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="text-[11px] text-muted-foreground/70 bg-secondary/30 px-3 py-1.5 rounded-lg">
-          {mode === "intraday"
-            ? "ATM · 0-1 DTE · T1 +50% · T2 +150% · Stop −30%"
-            : "OTM · 3-7 DTE · T1 +100% · T2 +300% · Stop −50%"}
+          {activeHint}
         </div>
       </div>
 
-      {/* Signal */}
+      {/* Content */}
       <AnimatePresence mode="wait">
-        {isLoading && !signal ? (
+        {mode === "best" ? (
+          <motion.div
+            key="best"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+          >
+            <BestOptionsTab
+              data={bestOptionsData}
+              isLoading={isLoadingBestOptions ?? false}
+              isError={isBestOptionsError ?? false}
+              onRefresh={onRefreshBestOptions}
+            />
+          </motion.div>
+        ) : isLoading && !signal ? (
           <motion.div
             key="loading"
             initial={{ opacity: 0 }}

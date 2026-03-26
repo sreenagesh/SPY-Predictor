@@ -5,6 +5,7 @@ import {
   useGetIntradaySignal,
   useGetSwingSignal,
   useGetMtfAnalysis,
+  useGetBestOptions,
 } from "@workspace/api-client-react";
 
 export type TimePeriod = "1mo" | "3mo" | "6mo" | "1y" | "2y";
@@ -67,6 +68,17 @@ export function useMtfAnalysis() {
     query: {
       refetchInterval: 5 * 60 * 1000,
       staleTime: 60 * 1000,
+      retry: 2,
+    },
+  });
+}
+
+// Best Options Scanner — refreshes every 10 minutes (Tradier rate-limit friendly)
+export function useBestOptions() {
+  return useGetBestOptions({
+    query: {
+      refetchInterval: 10 * 60 * 1000,
+      staleTime: 5 * 60 * 1000,
       retry: 2,
     },
   });

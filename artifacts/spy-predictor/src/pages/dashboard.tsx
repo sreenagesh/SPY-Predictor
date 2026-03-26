@@ -6,6 +6,7 @@ import {
   useIntradaySignal,
   useSwingSignal,
   useMtfAnalysis,
+  useBestOptions,
   type TimePeriod,
 } from "@/hooks/use-spy";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
@@ -26,6 +27,7 @@ export default function Dashboard() {
   const { data: intradaySignal, isLoading: loadingIntraday } = useIntradaySignal();
   const { data: swingSignal, isLoading: loadingSwing } = useSwingSignal();
   const { data: mtfData, isLoading: loadingMtf } = useMtfAnalysis();
+  const { data: bestOptions, isLoading: loadingBestOptions, isError: bestOptionsError, refetch: refetchBestOptions } = useBestOptions();
 
   const isError = dataError || predError;
   const isLoading = loadingData || loadingPrediction;
@@ -98,6 +100,10 @@ export default function Dashboard() {
               swingSignal={swingSignal}
               isLoadingIntraday={loadingIntraday}
               isLoadingSwing={loadingSwing}
+              bestOptionsData={bestOptions as any}
+              isLoadingBestOptions={loadingBestOptions}
+              isBestOptionsError={bestOptionsError}
+              onRefreshBestOptions={() => refetchBestOptions()}
             />
           </motion.div>
 

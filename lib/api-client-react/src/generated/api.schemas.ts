@@ -365,6 +365,55 @@ export interface MtfAnalysisResponse {
   keyLevels: KeyLevel[];
 }
 
+// ─── Best Options Scanner Types ───────────────────────────────────────────────
+
+export interface BestOptionCandidate {
+  /** Rank within the timeframe (1 = best) */
+  rank: number;
+  symbol: string;
+  side: "CALL" | "PUT";
+  strike: number;
+  /** Expiration date YYYY-MM-DD */
+  expiration: string;
+  daysToExpiry: number;
+  /** Current underlying price at scan time */
+  currentPrice: number;
+  /** Option mid price to pay at entry */
+  entry: number;
+  /** Stop-loss: exit if premium falls here (−50%) */
+  sl: number;
+  /** Take-profit 1: +50% on premium */
+  t1: number;
+  /** Take-profit 2: +150% on premium */
+  t2: number;
+  /** Take-profit 3: +300% on premium */
+  t3: number;
+  delta: number;
+  /** Implied volatility in percent */
+  iv: number;
+  openInterest: number;
+  volume: number;
+  /** Short-term momentum score −100 to +100 */
+  momentumScore: number;
+  /** Internal composite scoring for ranking */
+  compositeScore: number;
+  /** Human-readable rationale */
+  reason: string;
+  /** Underlying price at which T1 option target is expected */
+  underlyingT1: number;
+  underlyingT2: number;
+  underlyingT3: number;
+}
+
+export interface BestOptionsResponse {
+  /** Top 3 picks for intraday (0–3 DTE) */
+  intraday: BestOptionCandidate[];
+  /** Top 3 picks for weekly (4–10 DTE) */
+  weekly: BestOptionCandidate[];
+  scannedAt: string;
+  marketOpen: boolean;
+}
+
 export type GetSpyDataParams = {
   /**
    * Time period for historical data
