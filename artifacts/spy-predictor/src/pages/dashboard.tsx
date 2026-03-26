@@ -18,6 +18,7 @@ import { ScalpTargetsCard } from "@/components/scalp-targets";
 import { TradingSignalCard } from "@/components/trading-signal";
 import { MtfPanel } from "@/components/mtf-panel";
 import { LoadingSpinner } from "@/components/ui-elements";
+import { Scoreboard } from "@/components/scoreboard";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<TimePeriod>("6mo");
@@ -82,6 +83,9 @@ export default function Dashboard() {
           </div>
         )}
       </motion.div>
+
+      {/* ── Scoreboard ── */}
+      <Scoreboard />
 
       {isLoading && !spyData && !prediction ? (
         <LoadingSpinner className="h-[400px]" />

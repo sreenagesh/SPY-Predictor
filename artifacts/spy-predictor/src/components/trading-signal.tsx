@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, TrendingUp, Clock, Calendar, AlertCircle,
   Shield, Target, ChevronDown, ChevronUp, Info, Trophy,
+  CheckCircle2, XCircle, Crosshair,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { TradingSignalResponse, BestOptionsResponse } from "@workspace/api-client-react";
 import { BestOptionsTab } from "./best-options-tab";
+import { computeTargetStatus, useAutoTrackSignal } from "@/hooks/use-trade-tracker";
 
 type ActiveMode = "intraday" | "swing" | "best";
 
@@ -59,6 +61,36 @@ function CountdownTimer({ seconds }: { seconds: number }) {
   );
 }
 
+// ─── Target status badge shown above each cell ────────────────────────────────
+
+function TargetBadge({ type, hit }: { type: "t1" | "t2" | "sl" | "entry"; hit: boolean }) {
+  if (type === "entry") {
+    return <Crosshair className="w-3.5 h-3.5 text-muted-foreground/40" />;
+  }
+  if (type === "sl") {
+    return hit
+      ? <XCircle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+      : <Shield className="w-3.5 h-3.5 text-muted-foreground/40" />;
+  }
+  if (type === "t2" && hit) {
+    return (
+      <div className="flex items-center gap-0.5">
+        <Trophy className="w-3 h-3 text-yellow-400" />
+        <span className="text-[8px] font-black text-yellow-400 tracking-wide">HIT</span>
+      </div>
+    );
+  }
+  if (hit) {
+    return (
+      <div className="flex items-center gap-0.5">
+        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+        <span className="text-[8px] font-black text-emerald-400 tracking-wide">HIT</span>
+      </div>
+    );
+  }
+  return <Target className="w-3.5 h-3.5 text-muted-foreground/35" />;
+}
+
 // ─── The hero trade card — first thing user sees ───────────────────────────────
 
 function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
@@ -66,8 +98,8 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
   if (!trade) return null;
 
   const isCall = trade.side === "CALL";
-  const accentColor = isCall ? "text-bullish" : "text-bearish";
-  const accentBg    = isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20";
+  const accentColor  = isCall ? "text-bullish" : "text-bearish";
+  const accentBg     = isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20";
   const accentStripe = isCall ? "bg-bullish" : "bg-bearish";
 
   const expDate = new Date(trade.expiration + "T00:00:00Z").toLocaleDateString("en-US", {
@@ -77,6 +109,19 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
   const t1Label = mode === "intraday" ? "1.5×" : "2×";
   const t2Label = mode === "intraday" ? "2.5×" : "4×";
   const slLabel = mode === "intraday" ? "−30%" : "−50%";
+
+  const { t1Hit, t2Hit, slHit } = computeTargetStatus(
+    trade.side,
+    signal.currentPrice,
+    trade.underlyingEntry,
+    trade.underlyingT1,
+    trade.underlyingT2,
+    trade.underlyingStop,
+  );
+
+  const slBorder = slHit ? "border-red-500/40 bg-red-500/8" : "bg-bearish/8 border-bearish/20";
+  const t1Border = t2Hit || t1Hit ? "border-emerald-500/40 bg-emerald-500/8" : "bg-bullish/8 border-bullish/20";
+  const t2Border = t2Hit ? "border-yellow-500/40 bg-yellow-500/10" : "bg-bullish/8 border-bullish/20";
 
   return (
     <div className={`rounded-2xl border ${accentBg} overflow-hidden`}>
@@ -98,9 +143,21 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
             <span className="text-[10px] text-muted-foreground">OI {trade.openInterest.toLocaleString()}</span>
           )}
         </div>
+        {/* Live outcome pill */}
+        {(t2Hit || t1Hit || slHit) && (
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border ${
+            t2Hit ? "bg-yellow-500/15 border-yellow-500/30 text-yellow-400"
+            : t1Hit ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+            : "bg-red-500/15 border-red-500/30 text-red-400"
+          }`}>
+            {t2Hit ? <><Trophy className="w-2.5 h-2.5" /> T2 REACHED</>
+             : t1Hit ? <><CheckCircle2 className="w-2.5 h-2.5" /> T1 REACHED</>
+             : <><XCircle className="w-2.5 h-2.5" /> SL HIT</>}
+          </div>
+        )}
       </div>
 
-      {/* Option premium levels — the critical info */}
+      {/* Option premium levels */}
       <div className="p-4">
         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-2">
           <Target className="w-3 h-3" />
@@ -109,17 +166,30 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
 
         {/* 4-column premium grid */}
         <div className="grid grid-cols-4 gap-2 mb-4">
-          {[
-            { label: "BUY AT", value: `$${trade.premiumEntry.toFixed(2)}`, color: "text-foreground",  bg: "bg-white/5 border-white/10", icon: null },
-            { label: `T1 (${t1Label})`, value: `$${trade.premiumT1.toFixed(2)}`, color: "text-bullish", bg: "bg-bullish/8 border-bullish/20", icon: null },
-            { label: `T2 (${t2Label})`, value: `$${trade.premiumT2.toFixed(2)}`, color: "text-bullish", bg: "bg-bullish/8 border-bullish/20", icon: null },
-            { label: `STOP (${slLabel})`, value: `$${trade.premiumStop.toFixed(2)}`, color: "text-bearish", bg: "bg-bearish/8 border-bearish/20", icon: null },
-          ].map((item, i) => (
-            <div key={i} className={`rounded-xl border ${item.bg} p-3 flex flex-col gap-1 text-center`}>
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">{item.label}</span>
-              <span className={`text-sm font-black font-mono ${item.color}`}>{item.value}</span>
-            </div>
-          ))}
+          {/* Entry */}
+          <div className="rounded-xl border bg-white/5 border-white/10 p-3 flex flex-col items-center gap-1 text-center">
+            <TargetBadge type="entry" hit={false} />
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">BUY AT</span>
+            <span className="text-sm font-black font-mono text-foreground">${trade.premiumEntry.toFixed(2)}</span>
+          </div>
+          {/* T1 */}
+          <div className={`rounded-xl border ${t1Border} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <TargetBadge type="t1" hit={t1Hit} />
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T1 ({t1Label})</span>
+            <span className={`text-sm font-black font-mono ${t1Hit ? "text-emerald-400" : "text-bullish"}`}>${trade.premiumT1.toFixed(2)}</span>
+          </div>
+          {/* T2 */}
+          <div className={`rounded-xl border ${t2Border} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <TargetBadge type="t2" hit={t2Hit} />
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T2 ({t2Label})</span>
+            <span className={`text-sm font-black font-mono ${t2Hit ? "text-yellow-400" : "text-bullish"}`}>${trade.premiumT2.toFixed(2)}</span>
+          </div>
+          {/* Stop */}
+          <div className={`rounded-xl border ${slBorder} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <TargetBadge type="sl" hit={slHit} />
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">STOP ({slLabel})</span>
+            <span className={`text-sm font-black font-mono ${slHit ? "text-red-400" : "text-bearish"}`}>${trade.premiumStop.toFixed(2)}</span>
+          </div>
         </div>
 
         {/* Visual flow indicator */}
@@ -137,17 +207,22 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
           SPY Price Levels
         </div>
         <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: "ENTRY", value: formatCurrency(trade.underlyingEntry), color: "text-foreground",  bg: "bg-white/5 border-white/8" },
-            { label: "T1", value: formatCurrency(trade.underlyingT1), color: isCall ? "text-bullish" : "text-bearish", bg: isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20" },
-            { label: "T2", value: formatCurrency(trade.underlyingT2), color: isCall ? "text-bullish" : "text-bearish", bg: isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20" },
-            { label: "STOP", value: formatCurrency(trade.underlyingStop), color: "text-bearish", bg: "bg-bearish/8 border-bearish/20" },
-          ].map((item, i) => (
-            <div key={i} className={`rounded-xl border ${item.bg} p-3 flex flex-col gap-1 text-center`}>
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{item.label}</span>
-              <span className={`text-xs font-bold font-mono ${item.color}`}>{item.value}</span>
-            </div>
-          ))}
+          <div className="rounded-xl border bg-white/5 border-white/8 p-3 flex flex-col items-center gap-1 text-center">
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">ENTRY</span>
+            <span className="text-xs font-bold font-mono text-foreground">{formatCurrency(trade.underlyingEntry)}</span>
+          </div>
+          <div className={`rounded-xl border ${t1Hit ? "border-emerald-500/40 bg-emerald-500/8" : isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20"} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">T1</span>
+            <span className={`text-xs font-bold font-mono ${t1Hit ? "text-emerald-400" : isCall ? "text-bullish" : "text-bearish"}`}>{formatCurrency(trade.underlyingT1)}</span>
+          </div>
+          <div className={`rounded-xl border ${t2Hit ? "border-yellow-500/40 bg-yellow-500/8" : isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20"} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">T2</span>
+            <span className={`text-xs font-bold font-mono ${t2Hit ? "text-yellow-400" : isCall ? "text-bullish" : "text-bearish"}`}>{formatCurrency(trade.underlyingT2)}</span>
+          </div>
+          <div className={`rounded-xl border ${slHit ? "border-red-500/40 bg-red-500/8" : "bg-bearish/8 border-bearish/20"} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">STOP</span>
+            <span className={`text-xs font-bold font-mono ${slHit ? "text-red-400" : "text-bearish"}`}>{formatCurrency(trade.underlyingStop)}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -342,6 +417,10 @@ export function TradingSignalCard({
   onModeChange,
 }: TradingSignalCardProps) {
   const [mode, setMode] = useState<ActiveMode>("intraday");
+
+  // Auto-record wins/losses as price hits levels
+  useAutoTrackSignal("intraday", intradaySignal);
+  useAutoTrackSignal("swing", swingSignal);
 
   const handleModeChange = (m: ActiveMode) => {
     setMode(m);
