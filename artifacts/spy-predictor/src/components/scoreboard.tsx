@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Trophy, Zap, TrendingUp, RotateCcw, Plus } from "lucide-react";
 import { getAllScores, clearScores, recordManualOutcome } from "@/hooks/use-trade-tracker";
 import { cn } from "@/lib/utils";
@@ -101,6 +101,12 @@ export function Scoreboard() {
   const [showModal, setShowModal] = useState(false);
 
   const refresh = useCallback(() => setTick(t => t + 1), []);
+
+  // Auto-refresh every 60 s so newly auto-tracked trades appear without user action
+  useEffect(() => {
+    const id = setInterval(refresh, 60_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   const scores = getAllScores();
 
