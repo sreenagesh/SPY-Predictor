@@ -19,6 +19,7 @@ import { TradingSignalCard } from "@/components/trading-signal";
 import { MtfPanel } from "@/components/mtf-panel";
 import { LoadingSpinner } from "@/components/ui-elements";
 import { Scoreboard } from "@/components/scoreboard";
+import { MarketCommentary } from "@/components/market-commentary";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<TimePeriod>("6mo");
@@ -86,6 +87,14 @@ export default function Dashboard() {
 
       {/* ── Scoreboard ── */}
       <Scoreboard />
+
+      {/* ── Market Commentary ── */}
+      <MarketCommentary
+        mtfData={mtfData as any}
+        intradaySignal={intradaySignal as any}
+        swingSignal={swingSignal as any}
+        isLoading={loadingIntraday || loadingMtf}
+      />
 
       {isLoading && !spyData && !prediction ? (
         <LoadingSpinner className="h-[400px]" />
