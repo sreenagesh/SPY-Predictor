@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, Trash2, Trophy, CheckCircle2, XCircle,
-  Zap, TrendingUp, BarChart3, Filter,
+  Zap, TrendingUp, BarChart3, Filter, ChevronDown, ChevronRight,
+  Target, DollarSign, ShieldAlert, ArrowRight,
 } from "lucide-react";
-import { getAllScores, clearScores, type TradeRecord, type TradeMode } from "@/hooks/use-trade-tracker";
+import { getAllScores, clearScores, type TradeRecord, type TradeMode, type TradeDetails } from "@/hooks/use-trade-tracker";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "spy_trade_log_v1";
@@ -19,9 +20,11 @@ function loadAll(): TradeRecord[] {
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+function fmtP(v?: number) {
+  return v != null && v > 0 ? `$${v.toFixed(2)}` : "—";
 }
 
 // ─── Small badge chips ────────────────────────────────────────────────────────
@@ -74,6 +77,149 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
   );
 }
 
+// ─── Expanded Trade Detail Panel ───────────────────────────────────────────────
+
+function DetailCell({
+  label, value, highlight, dim,
+}: { label: string; value: string; highlight?: boolean; dim?: boolean }) {
+  return (
+    <div className={cn("flex flex-col gap-0.5 min-w-[80px]", dim && "opacity-40")}>
+      <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">{label}</span>
+      <span className={cn("text-xs font-mono font-bold", highlight ? "text-foreground" : "text-muted-foreground/80")}>{value}</span>
+    </div>
+  );
+}
+
+function LevelFlow({
+  outcome, details, signal,
+}: { outcome: string; details: TradeDetails; signal: "CALL" | "PUT" }) {
+  const hitT1 = outcome === "T1" || outcome === "T2";
+  const hitT2 = outcome === "T2";
+  const hitSL = outcome === "SL";
+
+  const dot = (active: boolean, color: string) => (
+    <span className={cn("inline-flex w-2 h-2 rounded-full shrink-0 mt-0.5", active ? color : "bg-white/10")} />
+  );
+
+  return (
+    <div className="flex items-start gap-2 flex-wrap">
+      {/* Entry */}
+      <div className="flex items-center gap-1.5">
+        {dot(true, "bg-blue-400")}
+        <div className="flex flex-col">
+          <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider">Entry</span>
+          <span className="text-xs font-mono font-bold text-blue-400">{fmtP(details.entryPrice)}</span>
+          {details.entryPremium && <span className="text-[10px] text-muted-foreground/50 font-mono">Prem: {fmtP(details.entryPremium)}</span>}
+        </div>
+      </div>
+
+      <ArrowRight className="w-3 h-3 text-muted-foreground/30 mt-3 shrink-0" />
+
+      {/* T1 */}
+      <div className="flex items-center gap-1.5">
+        {dot(hitT1, "bg-emerald-400")}
+        <div className="flex flex-col">
+          <span className={cn("text-[9px] uppercase tracking-wider", hitT1 ? "text-emerald-400/70" : "text-muted-foreground/50")}>T1 {hitT1 ? "✓" : ""}</span>
+          <span className={cn("text-xs font-mono font-bold", hitT1 ? "text-emerald-400" : "text-muted-foreground/60")}>{fmtP(details.t1Price)}</span>
+          {details.t1Premium && <span className="text-[10px] text-muted-foreground/50 font-mono">Prem: {fmtP(details.t1Premium)}</span>}
+        </div>
+      </div>
+
+      <ArrowRight className="w-3 h-3 text-muted-foreground/30 mt-3 shrink-0" />
+
+      {/* T2 */}
+      <div className="flex items-center gap-1.5">
+        {dot(hitT2, "bg-yellow-400")}
+        <div className="flex flex-col">
+          <span className={cn("text-[9px] uppercase tracking-wider", hitT2 ? "text-yellow-400/70" : "text-muted-foreground/50")}>T2 {hitT2 ? "✓" : ""}</span>
+          <span className={cn("text-xs font-mono font-bold", hitT2 ? "text-yellow-400" : "text-muted-foreground/60")}>{fmtP(details.t2Price)}</span>
+          {details.t2Premium && <span className="text-[10px] text-muted-foreground/50 font-mono">Prem: {fmtP(details.t2Premium)}</span>}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 mx-1 self-center">
+        <span className="text-muted-foreground/20 text-xs">|</span>
+      </div>
+
+      {/* Stop */}
+      <div className="flex items-center gap-1.5">
+        {dot(hitSL, "bg-red-400")}
+        <div className="flex flex-col">
+          <span className={cn("text-[9px] uppercase tracking-wider", hitSL ? "text-red-400/70" : "text-muted-foreground/50")}>Stop {hitSL ? "✗" : ""}</span>
+          <span className={cn("text-xs font-mono font-bold", hitSL ? "text-red-400" : "text-muted-foreground/60")}>{fmtP(details.stopPrice)}</span>
+          {details.stopPremium && <span className="text-[10px] text-muted-foreground/50 font-mono">Prem: {fmtP(details.stopPremium)}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpandedRow({ r }: { r: TradeRecord }) {
+  const d = r.details;
+
+  if (!d) {
+    return (
+      <tr className="border-b border-white/4 bg-white/[0.015]">
+        <td colSpan={8} className="px-8 py-3">
+          <p className="text-xs text-muted-foreground/40 italic">No trade details recorded — this trade was logged before detail tracking was enabled.</p>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="border-b border-white/4">
+      <td colSpan={8} className="px-0 py-0">
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className="overflow-hidden"
+        >
+          <div className={cn(
+            "mx-4 mb-4 mt-1 rounded-xl border p-4 grid grid-cols-1 gap-4",
+            r.outcome === "T1" || r.outcome === "T2"
+              ? "bg-emerald-500/[0.04] border-emerald-500/15"
+              : r.outcome === "SL"
+              ? "bg-red-500/[0.04] border-red-500/15"
+              : "bg-white/[0.02] border-white/8",
+          )}>
+
+            {/* Option contract row */}
+            <div className="flex items-center gap-6 flex-wrap border-b border-white/5 pb-3">
+              <DetailCell label="Strike" value={d.strike ? `$${d.strike}` : "—"} highlight />
+              <DetailCell label="Type" value={r.signal} highlight />
+              <DetailCell label="Expiry" value={d.expiration ?? "—"} />
+              <DetailCell label="DTE" value={d.dte != null ? `${d.dte} DTE` : "—"} />
+            </div>
+
+            {/* Price flow */}
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-2">Trade Levels — Underlying Price</p>
+              {d.entryPrice ? (
+                <LevelFlow outcome={r.outcome} details={d} signal={r.signal} />
+              ) : (
+                <p className="text-xs text-muted-foreground/40 italic">Price levels not available</p>
+              )}
+            </div>
+
+            {/* Premium row if available */}
+            {(d.entryPremium || d.t1Premium || d.t2Premium || d.stopPremium) && (
+              <div className="flex items-center gap-6 flex-wrap border-t border-white/5 pt-3">
+                <DetailCell label="Entry Premium" value={fmtP(d.entryPremium)} highlight />
+                <DetailCell label="T1 Premium" value={fmtP(d.t1Premium)} highlight={r.outcome === "T1" || r.outcome === "T2"} />
+                <DetailCell label="T2 Premium" value={fmtP(d.t2Premium)} highlight={r.outcome === "T2"} />
+                <DetailCell label="Stop Premium" value={fmtP(d.stopPremium)} highlight={r.outcome === "SL"} />
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </td>
+    </tr>
+  );
+}
+
 // ─── Summary stat card ────────────────────────────────────────────────────────
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
@@ -89,13 +235,20 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
 // ─── CSV export ───────────────────────────────────────────────────────────────
 
 function exportCSV(records: TradeRecord[]) {
-  const header = "Date,Time,Mode,Direction,Outcome,Result\n";
+  const header = "Date,Time,Mode,Direction,Strike,Expiry,DTE,Entry Price,T1 Price,T2 Price,Stop Price,Entry Premium,T1 Premium,T2 Premium,Stop Premium,Outcome,Result\n";
   const rows = records.map(r => {
     const d    = fmtDate(r.ts);
     const t    = fmtTime(r.ts);
     const mode = r.mode === "intraday" ? "Intraday" : r.mode === "swing" ? "Swing/BTST" : "Best Options";
     const res  = r.outcome === "T1" || r.outcome === "T2" ? "Win" : r.outcome === "SL" ? "Loss" : "Open";
-    return `"${d}","${t}","${mode}","${r.signal}","${r.outcome}","${res}"`;
+    const det  = r.details ?? {};
+    return [
+      `"${d}"`, `"${t}"`, `"${mode}"`, `"${r.signal}"`,
+      det.strike ?? "", `"${det.expiration ?? ""}"`, det.dte ?? "",
+      det.entryPrice ?? "", det.t1Price ?? "", det.t2Price ?? "", det.stopPrice ?? "",
+      det.entryPremium ?? "", det.t1Premium ?? "", det.t2Premium ?? "", det.stopPremium ?? "",
+      `"${r.outcome}"`, `"${res}"`,
+    ].join(",");
   }).join("\n");
   const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
@@ -121,8 +274,9 @@ export default function History() {
   const [records, setRecords]   = useState<TradeRecord[]>([]);
   const [filter, setFilter]     = useState<FilterMode>("all");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [expandedId, setExpandedId]   = useState<string | null>(null);
 
-  const reload = () => setRecords(loadAll().slice().reverse()); // newest first
+  const reload = () => setRecords(loadAll().slice().reverse());
   useEffect(() => { reload(); }, []);
 
   const scores     = getAllScores();
@@ -138,15 +292,18 @@ export default function History() {
   const handleClear = () => {
     clearScores();
     setShowConfirm(false);
+    setExpandedId(null);
     reload();
   };
+
+  const toggleExpand = (id: string) => setExpandedId(prev => prev === id ? null : id);
 
   return (
     <div className="space-y-5">
       {/* Page title */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
         <h2 className="text-2xl font-black tracking-tight">Trade History</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">All recorded wins and losses, auto-tracked from live signals</p>
+        <p className="text-sm text-muted-foreground mt-0.5">All recorded wins and losses, auto-tracked from live signals · <span className="text-primary/60">click any row for full trade details</span></p>
       </motion.div>
 
       {/* Summary row */}
@@ -172,7 +329,6 @@ export default function History() {
         transition={{ delay: 0.1 }}
         className="flex items-center justify-between flex-wrap gap-3"
       >
-        {/* Filter tabs */}
         <div className="flex items-center gap-1 p-1 bg-secondary/40 rounded-xl">
           {FILTER_TABS.map(tab => {
             const Icon = tab.icon;
@@ -195,7 +351,6 @@ export default function History() {
           })}
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => exportCSV(filtered.length > 0 ? filtered : records.filter(r => r.outcome !== "open"))}
@@ -262,43 +417,95 @@ export default function History() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-left px-5 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">#</th>
+                  <th className="w-8 px-3 py-3" />
+                  <th className="text-left px-3 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">#</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Date</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Time</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Mode</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Direction</th>
+                  <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Strike / Expiry</th>
+                  <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Entry → T1 → T2</th>
+                  <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Stop</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Outcome</th>
                   <th className="text-left px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Result</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r, i) => {
-                  const isWin = r.outcome === "T1" || r.outcome === "T2";
+                  const isWin  = r.outcome === "T1" || r.outcome === "T2";
                   const isLoss = r.outcome === "SL";
+                  const isOpen = expandedId === r.id;
+                  const det    = r.details;
+
                   return (
-                    <motion.tr
-                      key={r.id}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.02 }}
-                      className={cn(
-                        "border-b border-white/4 transition-colors hover:bg-white/3",
-                        isWin  && "bg-emerald-500/3",
-                        isLoss && "bg-red-500/3",
-                      )}
-                    >
-                      <td className="px-5 py-3.5 text-muted-foreground/50 text-xs font-mono">{filtered.length - i}</td>
-                      <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono">{fmtDate(r.ts)}</td>
-                      <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono">{fmtTime(r.ts)}</td>
-                      <td className="px-4 py-3.5"><ModeBadge mode={r.mode} /></td>
-                      <td className="px-4 py-3.5"><DirectionBadge dir={r.signal} /></td>
-                      <td className="px-4 py-3.5"><OutcomeBadge outcome={r.outcome} /></td>
-                      <td className="px-4 py-3.5">
-                        <span className={cn("text-xs font-black", isWin ? "text-emerald-400" : isLoss ? "text-red-400" : "text-muted-foreground")}>
-                          {isWin ? "WIN" : isLoss ? "LOSS" : "—"}
-                        </span>
-                      </td>
-                    </motion.tr>
+                    <React.Fragment key={r.id}>
+                      <motion.tr
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.02 }}
+                        onClick={() => toggleExpand(r.id)}
+                        className={cn(
+                          "border-b border-white/4 transition-colors cursor-pointer select-none",
+                          isOpen  ? "bg-white/[0.05]" : "hover:bg-white/[0.03]",
+                          !isOpen && isWin  && "bg-emerald-500/[0.03]",
+                          !isOpen && isLoss && "bg-red-500/[0.03]",
+                        )}
+                      >
+                        {/* Expand chevron */}
+                        <td className="pl-4 pr-1 py-3.5">
+                          {isOpen
+                            ? <ChevronDown className="w-3.5 h-3.5 text-primary/60" />
+                            : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30" />}
+                        </td>
+                        <td className="px-3 py-3.5 text-muted-foreground/50 text-xs font-mono">{filtered.length - i}</td>
+                        <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono">{fmtDate(r.ts)}</td>
+                        <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono">{fmtTime(r.ts)}</td>
+                        <td className="px-4 py-3.5"><ModeBadge mode={r.mode} /></td>
+                        <td className="px-4 py-3.5"><DirectionBadge dir={r.signal} /></td>
+
+                        {/* Strike / Expiry */}
+                        <td className="px-4 py-3.5">
+                          {det?.strike ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs font-mono font-bold text-foreground/80">${det.strike} {r.signal}</span>
+                              <span className="text-[10px] text-muted-foreground/50">{det.expiration ?? ""} · {det.dte != null ? `${det.dte}DTE` : ""}</span>
+                            </div>
+                          ) : <span className="text-muted-foreground/30 text-xs">—</span>}
+                        </td>
+
+                        {/* Entry → T1 → T2 */}
+                        <td className="px-4 py-3.5">
+                          {det?.entryPrice ? (
+                            <div className="flex items-center gap-1 text-[11px] font-mono">
+                              <span className="text-blue-400 font-bold">{fmtP(det.entryPrice)}</span>
+                              <ArrowRight className="w-2.5 h-2.5 text-muted-foreground/30" />
+                              <span className={cn("font-bold", isWin ? "text-emerald-400" : "text-muted-foreground/50")}>{fmtP(det.t1Price)}</span>
+                              <ArrowRight className="w-2.5 h-2.5 text-muted-foreground/30" />
+                              <span className={cn("font-bold", r.outcome === "T2" ? "text-yellow-400" : "text-muted-foreground/40")}>{fmtP(det.t2Price)}</span>
+                            </div>
+                          ) : <span className="text-muted-foreground/30 text-xs">—</span>}
+                        </td>
+
+                        {/* Stop */}
+                        <td className="px-4 py-3.5">
+                          {det?.stopPrice
+                            ? <span className={cn("text-xs font-mono font-bold", isLoss ? "text-red-400" : "text-muted-foreground/50")}>{fmtP(det.stopPrice)}</span>
+                            : <span className="text-muted-foreground/30 text-xs">—</span>}
+                        </td>
+
+                        <td className="px-4 py-3.5"><OutcomeBadge outcome={r.outcome} /></td>
+                        <td className="px-4 py-3.5">
+                          <span className={cn("text-xs font-black", isWin ? "text-emerald-400" : isLoss ? "text-red-400" : "text-muted-foreground")}>
+                            {isWin ? "WIN" : isLoss ? "LOSS" : "—"}
+                          </span>
+                        </td>
+                      </motion.tr>
+
+                      {/* Expanded detail panel */}
+                      <AnimatePresence>
+                        {isOpen && <ExpandedRow r={r} />}
+                      </AnimatePresence>
+                    </React.Fragment>
                   );
                 })}
               </tbody>

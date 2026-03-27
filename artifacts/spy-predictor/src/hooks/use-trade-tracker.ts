@@ -3,12 +3,27 @@ import { useEffect, useRef, useCallback } from "react";
 export type TradeOutcome = "T1" | "T2" | "SL" | "open";
 export type TradeMode = "intraday" | "swing" | "best";
 
+export interface TradeDetails {
+  strike?: number;
+  expiration?: string;
+  dte?: number;
+  entryPrice?: number;
+  t1Price?: number;
+  t2Price?: number;
+  stopPrice?: number;
+  entryPremium?: number;
+  t1Premium?: number;
+  t2Premium?: number;
+  stopPremium?: number;
+}
+
 export interface TradeRecord {
   id: string;
   mode: TradeMode;
   signal: "CALL" | "PUT";
   outcome: TradeOutcome;
   ts: string;
+  details?: TradeDetails;
 }
 
 const STORAGE_KEY = "spy_trade_log_v1";
@@ -70,19 +85,26 @@ export function recordManualOutcome(mode: TradeMode, signal: "CALL" | "PUT", out
   saveAll(all);
 }
 
-function tryRecord(id: string, mode: TradeMode, signal: "CALL" | "PUT", outcome: TradeOutcome) {
+function tryRecord(
+  id: string,
+  mode: TradeMode,
+  signal: "CALL" | "PUT",
+  outcome: TradeOutcome,
+  details?: TradeDetails,
+) {
   if (outcome === "open") return false;
   const all = loadAll();
   const existing = all.find(r => r.id === id);
   if (existing) {
     if (OUTCOME_PRIORITY[outcome] > OUTCOME_PRIORITY[existing.outcome]) {
       existing.outcome = outcome;
+      if (details && !existing.details) existing.details = details;
       saveAll(all);
       return true;
     }
     return false;
   } else {
-    all.push({ id, mode, signal, outcome, ts: new Date().toISOString() });
+    all.push({ id, mode, signal, outcome, ts: new Date().toISOString(), details });
     saveAll(all);
     return true;
   }
@@ -95,6 +117,7 @@ interface PrevSnapshot {
   t1: number;
   t2: number;
   stop: number;
+  details?: TradeDetails;
 }
 
 /**
@@ -117,19 +140,30 @@ export function useAutoTrackSignal(mode: "intraday" | "swing", signal: any) {
     const currentPrice = signal.currentPrice as number;
     const ts           = signal.timestamp as string;
 
+    // Build trade details for storage
+    const details: TradeDetails = {
+      strike:       trade.strike,
+      expiration:   trade.expiration,
+      dte:          trade.daysToExpiry,
+      entryPrice:   trade.underlyingEntry,
+      t1Price:      trade.underlyingT1,
+      t2Price:      trade.underlyingT2,
+      stopPrice:    trade.underlyingStop,
+      entryPremium: trade.entryPremium   > 0 ? trade.entryPremium   : undefined,
+      t1Premium:    trade.target1        > 0 ? trade.target1        : undefined,
+      t2Premium:    trade.target2        > 0 ? trade.target2        : undefined,
+      stopPremium:  trade.stopLoss       > 0 ? trade.stopLoss       : undefined,
+    };
+
     const prev = prevRef.current;
 
     // ── Step 1: New signal arrived → close out the PREVIOUS signal ──────────
-    // By checking the previous signal's targets against TODAY's current price,
-    // we catch any targets that were crossed between the last 1-minute check
-    // and when the new 5-min bar triggered a new signal.
     if (prev && prev.ts !== ts) {
       const { activeTarget: prevOutcome } = computeTargetStatus(
         prev.side, currentPrice, prev.entry, prev.t1, prev.t2, prev.stop,
       );
-      // Only record if outcome was determined (don't record "open" for old signals)
       if (prevOutcome !== "open") {
-        tryRecord(`${mode}_${prev.ts}`, mode, prev.side, prevOutcome);
+        tryRecord(`${mode}_${prev.ts}`, mode, prev.side, prevOutcome, prev.details);
       }
     }
 
@@ -139,17 +173,18 @@ export function useAutoTrackSignal(mode: "intraday" | "swing", signal: any) {
       trade.underlyingEntry, trade.underlyingT1, trade.underlyingT2, trade.underlyingStop,
     );
     if (currOutcome !== "open") {
-      tryRecord(`${mode}_${ts}`, mode, trade.side, currOutcome);
+      tryRecord(`${mode}_${ts}`, mode, trade.side, currOutcome, details);
     }
 
     // ── Step 3: Save current signal as "previous" for next cycle ────────────
     prevRef.current = {
       ts,
-      side:  trade.side,
-      entry: trade.underlyingEntry,
-      t1:    trade.underlyingT1,
-      t2:    trade.underlyingT2,
-      stop:  trade.underlyingStop,
+      side:    trade.side,
+      entry:   trade.underlyingEntry,
+      t1:      trade.underlyingT1,
+      t2:      trade.underlyingT2,
+      stop:    trade.underlyingStop,
+      details,
     };
   }, [signal?.timestamp, signal?.currentPrice, mode]);
 }
