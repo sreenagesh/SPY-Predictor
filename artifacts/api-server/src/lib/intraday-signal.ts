@@ -9,6 +9,7 @@ import {
   secondsUntilNextFiveMinBar,
   getNextSpyExpiry,
   daysUntil,
+  tradingDaysUntil,
 } from "./market-utils.js";
 
 const yahooFinance = new YahooFinanceClass();
@@ -170,8 +171,9 @@ async function fetchIntradayOptions(
   currentPrice: number,
   side: "CALL" | "PUT",
 ): Promise<OptionContract | null> {
-  const expiry = getNextSpyExpiry(0); // 0+ DTE — can be today (0DTE)
-  const dte = Math.max(daysUntil(expiry), 0);
+  const expiry = getNextSpyExpiry(0); // 0+ DTE — today if before 3:55 PM ET
+  // Use trading days so Fri→Mon shows as 1 DTE, not 3 calendar days
+  const dte = Math.max(tradingDaysUntil(expiry), 0);
 
   // 1️⃣ Tradier real-time (most accurate — has live bid/ask + Greeks)
   const tradier = await fetchOptionViaTradier(currentPrice, side, expiry, dte);
@@ -285,7 +287,7 @@ export async function computeIntradaySignal(): Promise<TradingSignal> {
 
   if (!contract) {
     const expiry = getNextSpyExpiry(0);
-    const dte = Math.max(daysUntil(expiry), 0);
+    const dte = Math.max(tradingDaysUntil(expiry), 0);
     const strike = Math.round(currentPrice);
     const premiumEntry = estimateIntradayPremium(currentPrice, strike, isCall, dte);
     contract = {

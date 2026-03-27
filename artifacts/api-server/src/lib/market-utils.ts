@@ -62,21 +62,68 @@ export function getNextDates(targetDte: number, count = 4): Date[] {
   return dates;
 }
 
+/** Calendar-day difference — strips time so Friday→Friday = 0, Friday→Monday = 3 */
 export function daysUntil(date: Date): number {
-  return Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const nowDay = new Date();
+  nowDay.setUTCHours(0, 0, 0, 0);
+  const targetDay = new Date(date);
+  targetDay.setUTCHours(0, 0, 0, 0);
+  return Math.round((targetDay.getTime() - nowDay.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-// For SPY: 0DTE on Mon/Wed/Fri, 1DTE otherwise
+/** Trading-day count (skips weekends) — used for DTE badge on intraday/swing cards */
+export function tradingDaysUntil(date: Date): number {
+  const nowDay = new Date();
+  nowDay.setUTCHours(0, 0, 0, 0);
+  const targetDay = new Date(date);
+  targetDay.setUTCHours(0, 0, 0, 0);
+  let count = 0;
+  const d = new Date(nowDay);
+  while (d < targetDay) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const day = d.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
+}
+
+/**
+ * Returns the nearest SPY option expiry (Mon/Wed/Fri).
+ *
+ * Key fix: we now check TODAY first before advancing.
+ * - If today is Mon/Wed/Fri AND it's before 3:55 PM ET → return today (0 DTE).
+ * - Otherwise advance to the next valid expiry.
+ */
 export function getNextSpyExpiry(minDte = 0): Date {
   const now = new Date();
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
+  const etOffset = getEdtOffset(now); // 4 = EDT, 5 = EST
+
+  // Current wall-clock hour in ET
+  const etHour = (now.getUTCHours() - etOffset + 24) % 24;
+  const etMin  = now.getUTCMinutes();
+  const etMins = etHour * 60 + etMin;
+
+  // Build "today" in ET as a UTC midnight Date
+  const todayUtcMidnight = new Date(now);
+  todayUtcMidnight.setUTCHours(0, 0, 0, 0);
+
+  // Day-of-week in ET (the UTC date equals the ET date for midnight UTC)
+  const todayDay = todayUtcMidnight.getUTCDay();
+
+  const isSPYDay = (d: number) => d === 1 || d === 3 || d === 5; // Mon, Wed, Fri
+
+  // ── Check TODAY for 0 DTE ────────────────────────────────────────────────
+  // Options are live until ~3:55 PM ET on expiry day
+  if (minDte === 0 && isSPYDay(todayDay) && etMins < 15 * 60 + 55) {
+    return new Date(todayUtcMidnight);
+  }
+
+  // ── Advance to next valid SPY expiry ─────────────────────────────────────
+  const d = new Date(todayUtcMidnight);
   for (let i = 0; i < 14; i++) {
-    d.setDate(d.getDate() + 1);
-    const day = d.getDay();
-    if (day === 1 || day === 3 || day === 5) {
-      if (daysUntil(d) >= minDte) return new Date(d);
-    }
+    d.setUTCDate(d.getUTCDate() + 1);
+    const day = d.getUTCDay();
+    if (isSPYDay(day)) return new Date(d);
   }
   return d;
 }
