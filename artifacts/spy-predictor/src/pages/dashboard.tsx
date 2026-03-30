@@ -50,6 +50,18 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       {/* Compact header bar */}
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-white/10 px-4 py-2 flex items-center gap-4 text-sm">
+  <span className="text-muted-foreground text-xs">SPY</span>
+  <span className="font-mono font-black text-lg">
+    {spyData?.currentPrice ? formatCurrency(spyData.currentPrice) : "---"}
+  </span>
+  {spyData?.priceChangePct != null && (
+    <span className={`font-bold text-xs ${spyData.priceChangePct >= 0 ? "text-bullish" : "text-bearish"}`}>
+      {formatPercentage(spyData.priceChangePct)} ({spyData.priceChange >= 0 ? "+" : ""}{formatCurrency(spyData.priceChange)})
+    </span>
+  )}
+  <span className="text-[10px] text-muted-foreground/50 ml-auto">Open: {spyData?.bars?.[0] ? formatCurrency(spyData.bars[0].open) : "---"}</span>
+</div>
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
