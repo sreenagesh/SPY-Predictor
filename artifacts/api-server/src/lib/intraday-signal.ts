@@ -498,6 +498,12 @@ export async function computeIntradaySignal(): Promise<TradingSignal> {
     extendedMove,
   };
 
+  // Cap: if market closed and premium over limit, force WAIT
+  if (signal !== "WAIT" && marketStatus !== "open" && marketStatus !== "premarket") {
+    signal = "WAIT";
+    reasoning = `Market closed — no 0DTE options available. Next session opens with fresher premiums. Current signal bias: ${rawSignal ?? signal} (score: ${score}).`;
+  }
+
   if (signal === "WAIT") {
     return { ...commonFields, trade: null };
   }
