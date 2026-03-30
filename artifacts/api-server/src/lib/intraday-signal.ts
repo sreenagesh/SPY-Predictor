@@ -445,7 +445,7 @@ export async function computeIntradaySignal(): Promise<TradingSignal> {
       confidence = Math.max(confidence - 10, 35);
       reasoning += ` ⚠️ Day ${extendedMove.sessionsSinceTrend} of bullish move — continuation risk elevated.`;
     }
-  } else if (score <= -30) {
+  } else if (score <= -30 && rsi > 25) {
     signal     = "PUT";
     confidence = Math.min(50 + Math.abs(score) * 0.6, 92);
     reasoning  = `5-min momentum strongly bearish (score: ${score}). EMA8/21 crossover and MACD confirm downward pressure.`;
