@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Zap, TrendingUp, Clock, Calendar, AlertCircle,
-  Shield, Target, ChevronDown, ChevronUp, Info, Trophy,
-  CheckCircle2, XCircle, Crosshair,
+  Zap, TrendingUp, Clock, Calendar, AlertCircle, Shield, Target,
+  ChevronDown, ChevronUp, Info, Trophy, CheckCircle2, XCircle,
+  Crosshair, AlertTriangle, TrendingDown, Activity, Ban,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { TradingSignalResponse, BestOptionsResponse } from "@workspace/api-client-react";
@@ -13,27 +13,41 @@ import { computeTargetStatus, useAutoTrackSignal } from "@/hooks/use-trade-track
 type ActiveMode = "intraday" | "swing" | "best";
 
 interface TradingSignalCardProps {
-  intradaySignal: TradingSignalResponse | undefined;
-  swingSignal: TradingSignalResponse | undefined;
-  isLoadingIntraday: boolean;
-  isLoadingSwing: boolean;
-  bestOptionsData?: BestOptionsResponse;
+  intradaySignal:       TradingSignalResponse | undefined;
+  swingSignal:          TradingSignalResponse | undefined;
+  isLoadingIntraday:    boolean;
+  isLoadingSwing:       boolean;
+  bestOptionsData?:     BestOptionsResponse;
   isLoadingBestOptions?: boolean;
-  isBestOptionsError?: boolean;
+  isBestOptionsError?:  boolean;
   onRefreshBestOptions?: () => void;
-  onModeChange?: (mode: "intraday" | "swing") => void;
+  onModeChange?:        (mode: "intraday" | "swing") => void;
 }
 
-// ─── Market status pill ────────────────────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
+function getRsiExtra(signal: TradingSignalResponse): {
+  rsi: number | null;
+  rsiRegime: string | null;
+  rsiWarning: string | null;
+  extendedMove: { sessionsSinceTrend: number; trendDirection: string; totalMovePercent: number } | null;
+} {
+  const s = signal as any;
+  return {
+    rsi:          s.rsi          ?? null,
+    rsiRegime:    s.rsiRegime    ?? null,
+    rsiWarning:   s.rsiWarning   ?? null,
+    extendedMove: s.extendedMove ?? null,
+  };
+}
 
+// ─── Market status pill ───────────────────────────────────────────────────────
 function MarketStatusBadge({ status }: { status: string }) {
   const cfg = {
     open:       { label: "MARKET OPEN",   dot: "bg-emerald-400", text: "text-emerald-400" },
-    premarket:  { label: "PRE-MARKET",    dot: "bg-amber-400",   text: "text-amber-400" },
-    afterhours: { label: "AFTER HOURS",   dot: "bg-blue-400",    text: "text-blue-400" },
-    closed:     { label: "MARKET CLOSED", dot: "bg-slate-400",   text: "text-slate-400" },
+    premarket:  { label: "PRE-MARKET",    dot: "bg-amber-400",   text: "text-amber-400"   },
+    afterhours: { label: "AFTER HOURS",   dot: "bg-blue-400",    text: "text-blue-400"    },
+    closed:     { label: "MARKET CLOSED", dot: "bg-slate-400",   text: "text-slate-400"   },
   }[status] ?? { label: status.toUpperCase(), dot: "bg-slate-400", text: "text-slate-400" };
-
   return (
     <div className="flex items-center gap-1.5">
       <span className={`w-2 h-2 rounded-full ${cfg.dot} ${status === "open" ? "animate-pulse" : ""}`} />
@@ -42,8 +56,7 @@ function MarketStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Live countdown to next 5-min bar ─────────────────────────────────────────
-
+// ─── Countdown timer ──────────────────────────────────────────────────────────
 function CountdownTimer({ seconds }: { seconds: number }) {
   const [remaining, setRemaining] = useState(seconds);
   useEffect(() => {
@@ -61,72 +74,167 @@ function CountdownTimer({ seconds }: { seconds: number }) {
   );
 }
 
-// ─── Target status badge shown above each cell ────────────────────────────────
+// ─── RSI Warning Banner (NEW) ─────────────────────────────────────────────────
+function RsiWarningBanner({ warning, regime, rsi }: { warning: string; regime: string; rsi: number | null }) {
+  const isBlocked = regime === "deeply_oversold" || regime === "deeply_overbought";
+  const isOversold = regime === "deeply_oversold" || regime === "oversold";
 
+  const cfg = isBlocked
+    ? { bg: "bg-red-500/12 border-red-500/30", icon: Ban, iconColor: "text-red-400", label: "SIGNAL BLOCKED", labelColor: "text-red-400" }
+    : { bg: "bg-amber-500/10 border-amber-500/25", icon: AlertTriangle, iconColor: "text-amber-400", label: "RSI CAUTION", labelColor: "text-amber-400" };
+
+  const Icon = cfg.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`rounded-xl border ${cfg.bg} px-4 py-3 flex items-start gap-3`}
+    >
+      <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${cfg.iconColor}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`text-[10px] font-black tracking-widest ${cfg.labelColor}`}>{cfg.label}</span>
+          {rsi != null && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isBlocked ? "bg-red-500/15 border-red-500/30 text-red-400" : "bg-amber-500/15 border-amber-500/30 text-amber-400"}`}>
+              RSI {rsi.toFixed(1)} — {isOversold ? "Oversold" : "Overbought"}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{warning}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Extended Move Warning (NEW) ──────────────────────────────────────────────
+function ExtendedMoveWarning({ extendedMove }: {
+  extendedMove: { sessionsSinceTrend: number; trendDirection: string; totalMovePercent: number };
+}) {
+  const { sessionsSinceTrend, trendDirection, totalMovePercent } = extendedMove;
+  if (sessionsSinceTrend < 2) return null;
+
+  const isBearish = trendDirection === "bearish";
+  const moveStr = `${Math.abs(totalMovePercent).toFixed(1)}%`;
+  const dayStr = `Day ${sessionsSinceTrend}`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl border border-orange-500/25 bg-orange-500/8 px-4 py-3 flex items-start gap-3"
+    >
+      {isBearish
+        ? <TrendingDown className="w-4 h-4 mt-0.5 flex-shrink-0 text-orange-400" />
+        : <TrendingUp    className="w-4 h-4 mt-0.5 flex-shrink-0 text-orange-400" />
+      }
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-black tracking-widest text-orange-400">EXTENDED MOVE</span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-orange-500/15 border-orange-500/30 text-orange-400">
+            {dayStr} of sell-off · {moveStr} total
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          SPY has been {isBearish ? "selling off" : "rallying"} for {sessionsSinceTrend} consecutive sessions ({moveStr}).{" "}
+          Chasing {isBearish ? "PUTs" : "CALLs"} on {dayStr} carries elevated reversal risk.{" "}
+          Wait for RSI recovery or a confirmed continuation candle before entering.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── RSI Gauge (NEW) ─────────────────────────────────────────────────────────
+function RsiGauge({ rsi, regime }: { rsi: number; regime: string }) {
+  const pct = Math.min(Math.max(rsi, 0), 100);
+  const color =
+    regime === "deeply_oversold"    ? "#ef4444" :
+    regime === "oversold"           ? "#f97316" :
+    regime === "deeply_overbought"  ? "#ef4444" :
+    regime === "overbought"         ? "#f97316" : "#22c55e";
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">RSI</span>
+      <div className="relative flex-1 h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+        {/* Oversold zone */}
+        <div className="absolute left-0 top-0 h-full w-[30%] bg-red-500/20 rounded-l-full" />
+        {/* Overbought zone */}
+        <div className="absolute right-0 top-0 h-full w-[30%] bg-red-500/20 rounded-r-full" />
+        {/* Current RSI marker */}
+        <div
+          className="absolute top-0 h-full w-1.5 rounded-full transition-all duration-700"
+          style={{ left: `${pct}%`, backgroundColor: color, transform: "translateX(-50%)" }}
+        />
+      </div>
+      <span className="text-[10px] font-bold font-mono" style={{ color }}>{rsi.toFixed(1)}</span>
+    </div>
+  );
+}
+
+// ─── Target badge ─────────────────────────────────────────────────────────────
 function TargetBadge({ type, hit }: { type: "t1" | "t2" | "sl" | "entry"; hit: boolean }) {
-  if (type === "entry") {
-    return <Crosshair className="w-3.5 h-3.5 text-muted-foreground/40" />;
-  }
-  if (type === "sl") {
-    return hit
-      ? <XCircle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-      : <Shield className="w-3.5 h-3.5 text-muted-foreground/40" />;
-  }
-  if (type === "t2" && hit) {
-    return (
-      <div className="flex items-center gap-0.5">
-        <Trophy className="w-3 h-3 text-yellow-400" />
-        <span className="text-[8px] font-black text-yellow-400 tracking-wide">HIT</span>
-      </div>
-    );
-  }
-  if (hit) {
-    return (
-      <div className="flex items-center gap-0.5">
-        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-        <span className="text-[8px] font-black text-emerald-400 tracking-wide">HIT</span>
-      </div>
-    );
-  }
+  if (type === "entry") return <Crosshair className="w-3.5 h-3.5 text-muted-foreground/40" />;
+  if (type === "sl")    return hit ? <XCircle className="w-3.5 h-3.5 text-red-400 animate-pulse" /> : <Shield className="w-3.5 h-3.5 text-muted-foreground/40" />;
+  if (type === "t2" && hit) return (
+    <div className="flex items-center gap-0.5">
+      <Trophy className="w-3 h-3 text-yellow-400" />
+      <span className="text-[8px] font-black text-yellow-400 tracking-wide">HIT</span>
+    </div>
+  );
+  if (hit) return (
+    <div className="flex items-center gap-0.5">
+      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+      <span className="text-[8px] font-black text-emerald-400 tracking-wide">HIT</span>
+    </div>
+  );
   return <Target className="w-3.5 h-3.5 text-muted-foreground/35" />;
 }
 
-// ─── The hero trade card — first thing user sees ───────────────────────────────
-
+// ─── Trade hero card ──────────────────────────────────────────────────────────
 function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
   const { trade, mode, signal: sig } = signal;
   if (!trade) return null;
 
-  const isCall = trade.side === "CALL";
-  const accentColor  = isCall ? "text-bullish" : "text-bearish";
-  const accentBg     = isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20";
+  const isCall      = trade.side === "CALL";
+  const accentColor = isCall ? "text-bullish" : "text-bearish";
+  const accentBg    = isCall ? "bg-bullish/8 border-bullish/20" : "bg-bearish/8 border-bearish/20";
   const accentStripe = isCall ? "bg-bullish" : "bg-bearish";
+
+  // Detect OTM strike
+  const atmStrike = Math.round(signal.currentPrice);
+  const otmOffset = Math.abs(trade.strike - atmStrike);
+  const isOtm     = otmOffset > 0;
 
   const expDate = new Date(trade.expiration + "T00:00:00Z").toLocaleDateString("en-US", {
     month: "short", day: "numeric", timeZone: "UTC",
   });
 
-  const t1Label = mode === "intraday" ? "1.5×" : "2×";
-  const t2Label = mode === "intraday" ? "2.5×" : "4×";
-  const slLabel = mode === "intraday" ? "−30%" : "−50%";
-
   const { t1Hit, t2Hit, slHit } = computeTargetStatus(
-    trade.side,
-    signal.currentPrice,
-    trade.underlyingEntry,
-    trade.underlyingT1,
-    trade.underlyingT2,
-    trade.underlyingStop,
+    trade.side, signal.currentPrice,
+    trade.underlyingEntry, trade.underlyingT1, trade.underlyingT2, trade.underlyingStop,
   );
 
-  const slBorder = slHit ? "border-red-500/40 bg-red-500/8" : "bg-bearish/8 border-bearish/20";
+  const slBorder = slHit ? "border-red-500/40 bg-red-500/8"       : "bg-bearish/8 border-bearish/20";
   const t1Border = t2Hit || t1Hit ? "border-emerald-500/40 bg-emerald-500/8" : "bg-bullish/8 border-bullish/20";
   const t2Border = t2Hit ? "border-yellow-500/40 bg-yellow-500/10" : "bg-bullish/8 border-bullish/20";
+
+  // Compute % gain labels dynamically from actual premiums
+  const t1PctGain = trade.premiumEntry > 0
+    ? `+${Math.round(((trade.premiumT1 - trade.premiumEntry) / trade.premiumEntry) * 100)}%`
+    : "T1";
+  const t2PctGain = trade.premiumEntry > 0
+    ? `+${Math.round(((trade.premiumT2 - trade.premiumEntry) / trade.premiumEntry) * 100)}%`
+    : "T2";
+  const slPctLoss = trade.premiumEntry > 0
+    ? `${Math.round(((trade.premiumStop - trade.premiumEntry) / trade.premiumEntry) * 100)}%`
+    : "SL";
 
   return (
     <div className={`rounded-2xl border ${accentBg} overflow-hidden`}>
       {/* Contract headline */}
-      <div className="px-4 py-3 flex items-center justify-between gap-2 border-b border-white/5">
+      <div className="px-4 py-3 flex items-center justify-between gap-2 border-b border-white/5 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-base font-black font-mono tracking-tight ${accentColor}`}>
             SPY {trade.strike} {trade.side}
@@ -136,6 +244,12 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${accentBg} ${accentColor}`}>
             {trade.daysToExpiry} DTE
           </span>
+          {/* OTM badge — NEW */}
+          {isOtm && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400">
+              {otmOffset} strike{otmOffset > 1 ? "s" : ""} OTM · premium capped
+            </span>
+          )}
           {trade.impliedVolatility != null && (
             <span className="text-[10px] text-muted-foreground">IV {trade.impliedVolatility.toFixed(1)}%</span>
           )}
@@ -143,6 +257,7 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
             <span className="text-[10px] text-muted-foreground">OI {trade.openInterest.toLocaleString()}</span>
           )}
         </div>
+
         {/* Live outcome pill */}
         {(t2Hit || t1Hit || slHit) && (
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border ${
@@ -151,8 +266,8 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
             : "bg-red-500/15 border-red-500/30 text-red-400"
           }`}>
             {t2Hit ? <><Trophy className="w-2.5 h-2.5" /> T2 REACHED</>
-             : t1Hit ? <><CheckCircle2 className="w-2.5 h-2.5" /> T1 REACHED</>
-             : <><XCircle className="w-2.5 h-2.5" /> SL HIT</>}
+              : t1Hit ? <><CheckCircle2 className="w-2.5 h-2.5" /> T1 REACHED</>
+              : <><XCircle className="w-2.5 h-2.5" /> SL HIT</>}
           </div>
         )}
       </div>
@@ -160,8 +275,11 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
       {/* Option premium levels */}
       <div className="p-4">
         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-2">
-          <Target className="w-3 h-3" />
-          Option Premium Targets
+          <Target className="w-3 h-3" /> Option Premium Targets
+          {/* Premium cap note */}
+          <span className="ml-auto text-[9px] text-sky-400/80 normal-case font-normal">
+            Targets based on ATR + delta · max $2.50 entry
+          </span>
         </div>
 
         {/* 4-column premium grid */}
@@ -175,24 +293,24 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
           {/* T1 */}
           <div className={`rounded-xl border ${t1Border} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
             <TargetBadge type="t1" hit={t1Hit} />
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T1 ({t1Label})</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T1 ({t1PctGain})</span>
             <span className={`text-sm font-black font-mono ${t1Hit ? "text-emerald-400" : "text-bullish"}`}>${trade.premiumT1.toFixed(2)}</span>
           </div>
           {/* T2 */}
           <div className={`rounded-xl border ${t2Border} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
             <TargetBadge type="t2" hit={t2Hit} />
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T2 ({t2Label})</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">T2 ({t2PctGain})</span>
             <span className={`text-sm font-black font-mono ${t2Hit ? "text-yellow-400" : "text-bullish"}`}>${trade.premiumT2.toFixed(2)}</span>
           </div>
           {/* Stop */}
           <div className={`rounded-xl border ${slBorder} p-3 flex flex-col items-center gap-1 text-center transition-colors duration-500`}>
             <TargetBadge type="sl" hit={slHit} />
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">STOP ({slLabel})</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider leading-tight">STOP ({slPctLoss})</span>
             <span className={`text-sm font-black font-mono ${slHit ? "text-red-400" : "text-bearish"}`}>${trade.premiumStop.toFixed(2)}</span>
           </div>
         </div>
 
-        {/* Visual flow indicator */}
+        {/* Visual flow */}
         <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
           <div className={`h-px flex-1 ${accentStripe} opacity-30`} />
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">
@@ -203,8 +321,7 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
 
         {/* SPY underlying levels */}
         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-2">
-          <TrendingUp className="w-3 h-3" />
-          SPY Price Levels
+          <TrendingUp className="w-3 h-3" /> SPY Price Levels
         </div>
         <div className="grid grid-cols-4 gap-2">
           <div className="rounded-xl border bg-white/5 border-white/8 p-3 flex flex-col items-center gap-1 text-center">
@@ -229,8 +346,7 @@ function TradeHeroCard({ signal }: { signal: TradingSignalResponse }) {
   );
 }
 
-// ─── WAIT state card ───────────────────────────────────────────────────────────
-
+// ─── WAIT card ────────────────────────────────────────────────────────────────
 function WaitCard({ signal }: { signal: TradingSignalResponse }) {
   return (
     <div className="rounded-2xl border border-neutral/20 bg-neutral/5 p-6 text-center space-y-3">
@@ -248,57 +364,60 @@ function WaitCard({ signal }: { signal: TradingSignalResponse }) {
   );
 }
 
-// ─── Momentum + strength row ───────────────────────────────────────────────────
-
+// ─── Strength row ─────────────────────────────────────────────────────────────
 function StrengthRow({ signal }: { signal: TradingSignalResponse }) {
   const confidence = Math.round(signal.confidence);
-  const score = signal.score;
-  const clamped = Math.max(-100, Math.min(100, score));
-  const pct = Math.abs(clamped) / 100;
-  const confColor = confidence >= 70 ? "bg-bullish" : confidence >= 50 ? "bg-neutral" : "bg-bearish";
+  const score      = signal.score;
+  const clamped    = Math.max(-100, Math.min(100, score));
+  const pct        = Math.abs(clamped) / 100;
+  const confColor  = confidence >= 70 ? "bg-bullish" : confidence >= 50 ? "bg-neutral" : "bg-bearish";
   const scoreColor = score > 0 ? "#22c55e" : score < 0 ? "#ef4444" : "#f59e0b";
-  const scoreText = score > 0 ? `text-bullish` : score < 0 ? `text-bearish` : `text-neutral`;
+  const scoreText  = score > 0 ? "text-bullish" : score < 0 ? "text-bearish" : "text-neutral";
+
+  const { rsi, rsiRegime } = getRsiExtra(signal);
 
   return (
-    <div className="grid grid-cols-2 gap-4 px-4 py-3 border-b border-white/5">
+    <div className="grid grid-cols-3 gap-4 px-4 py-3 border-b border-white/5">
+      {/* Signal strength */}
       <div className="space-y-1.5">
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Signal Strength</span>
           <span className="text-xs font-bold font-mono">{confidence}%</span>
         </div>
         <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-700 ${confColor}`}
-            style={{ width: `${confidence}%` }} />
+          <div className={`h-full rounded-full transition-all duration-700 ${confColor}`} style={{ width: `${confidence}%` }} />
         </div>
       </div>
+
+      {/* Momentum score */}
       <div className="space-y-1.5">
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Momentum</span>
-          <span className={`text-xs font-bold font-mono ${scoreText}`}>
-            {score > 0 ? "+" : ""}{score}
-          </span>
+          <span className={`text-xs font-bold font-mono ${scoreText}`}>{score > 0 ? "+" : ""}{score}</span>
         </div>
         <div className="relative h-1.5 bg-secondary/50 rounded-full overflow-hidden">
           <div className="absolute left-1/2 top-0 w-px h-full bg-white/20" />
-          <div
-            className="absolute top-0 h-full rounded-full transition-all duration-700"
-            style={{
-              left: clamped >= 0 ? "50%" : `${50 - pct * 50}%`,
-              width: `${pct * 50}%`,
-              backgroundColor: scoreColor,
-            }}
-          />
+          <div className="absolute top-0 h-full rounded-full transition-all duration-700" style={{
+            left: clamped >= 0 ? "50%" : `${50 - pct * 50}%`,
+            width: `${pct * 50}%`,
+            backgroundColor: scoreColor,
+          }} />
         </div>
       </div>
+
+      {/* RSI gauge (NEW) */}
+      {rsi != null && rsiRegime != null && (
+        <div className="space-y-1.5">
+          <RsiGauge rsi={rsi} regime={rsiRegime} />
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Collapsible analysis section ─────────────────────────────────────────────
-
+// ─── Collapsible analysis ─────────────────────────────────────────────────────
 function AnalysisSection({ signal }: { signal: TradingSignalResponse }) {
   const [open, setOpen] = useState(false);
-
   return (
     <div className="border-t border-white/5">
       <button
@@ -308,7 +427,6 @@ function AnalysisSection({ signal }: { signal: TradingSignalResponse }) {
         <span>Analysis Details ({signal.keyFactors.length} factors)</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
-
       <AnimatePresence>
         {open && (
           <motion.div
@@ -318,7 +436,6 @@ function AnalysisSection({ signal }: { signal: TradingSignalResponse }) {
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            {/* Key factors */}
             {signal.keyFactors.length > 0 && (
               <div className="px-4 pb-3 space-y-2">
                 {signal.keyFactors.map((factor, i) => {
@@ -335,8 +452,6 @@ function AnalysisSection({ signal }: { signal: TradingSignalResponse }) {
                 })}
               </div>
             )}
-
-            {/* Reasoning */}
             <div className="px-4 pb-4 flex items-start gap-2 text-muted-foreground border-t border-white/5 pt-3">
               <Info className="w-4 h-4 mt-0.5 flex-shrink-0 opacity-60" />
               <p className="text-sm italic opacity-75 leading-relaxed">{signal.reasoning}</p>
@@ -348,23 +463,23 @@ function AnalysisSection({ signal }: { signal: TradingSignalResponse }) {
   );
 }
 
-// ─── Full signal body ──────────────────────────────────────────────────────────
-
+// ─── Full signal body ─────────────────────────────────────────────────────────
 function SignalBody({ signal }: { signal: TradingSignalResponse }) {
   const cfg = {
     CALL: { color: "text-bullish", bg: "bg-bullish/10", border: "border-bullish/30", glow: "shadow-[0_0_40px_-4px_rgba(34,197,94,0.25)]", dot: "bg-bullish" },
-    PUT:  { color: "text-bearish", bg: "bg-bearish/10",  border: "border-bearish/30",  glow: "shadow-[0_0_40px_-4px_rgba(239,68,68,0.25)]",  dot: "bg-bearish" },
+    PUT:  { color: "text-bearish", bg: "bg-bearish/10",  border: "border-bearish/30",  glow: "shadow-[0_0_40px_-4px_rgba(239,68,68,0.25)]",   dot: "bg-bearish" },
     WAIT: { color: "text-neutral", bg: "bg-neutral/5",   border: "border-neutral/20",  glow: "",                                               dot: "bg-neutral" },
   }[signal.signal];
 
-  const modeLabel = signal.mode === "intraday"
-    ? "5-min · 0-1 DTE"
-    : "Daily · 3-7 DTE · Enter ~3:45 PM";
+  const modeLabel = signal.mode === "intraday" ? "5-min · 0-1 DTE" : "Daily · 3-7 DTE · Enter ~3:45 PM";
+  const { rsi, rsiRegime, rsiWarning, extendedMove } = getRsiExtra(signal);
+
+  const showRsiWarning    = !!rsiWarning && signal.mode === "intraday";
+  const showExtendedMove  = !!extendedMove && extendedMove.sessionsSinceTrend >= 2 && signal.mode === "intraday";
 
   return (
     <div className={`rounded-2xl border ${cfg.border} ${cfg.glow} overflow-hidden`}>
-
-      {/* ── Top bar: signal + mode + timer + market status ── */}
+      {/* Top bar */}
       <div className={`${cfg.bg} px-4 py-4 flex items-center justify-between gap-3 flex-wrap`}>
         <div className="flex items-center gap-3">
           <span className={`w-3.5 h-3.5 rounded-full ${cfg.dot} ${signal.signal !== "WAIT" ? "animate-pulse" : ""}`} />
@@ -385,10 +500,28 @@ function SignalBody({ signal }: { signal: TradingSignalResponse }) {
         <MarketStatusBadge status={signal.marketStatus} />
       </div>
 
-      {/* ── Strength row ── */}
+      {/* Strength row */}
       {signal.signal !== "WAIT" && <StrengthRow signal={signal} />}
 
-      {/* ── Trade hero (CALL/PUT) or WAIT card ── */}
+      {/* ── RSI Warning Banner (NEW — shown prominently before trade card) ── */}
+      {showRsiWarning && (
+        <div className="px-4 pt-4">
+          <RsiWarningBanner
+            warning={rsiWarning!}
+            regime={rsiRegime!}
+            rsi={rsi}
+          />
+        </div>
+      )}
+
+      {/* ── Extended Move Warning (NEW) ── */}
+      {showExtendedMove && !showRsiWarning && (
+        <div className="px-4 pt-4">
+          <ExtendedMoveWarning extendedMove={extendedMove!} />
+        </div>
+      )}
+
+      {/* Trade hero or WAIT */}
       <div className="p-4">
         {signal.signal !== "WAIT" && signal.trade ? (
           <TradeHeroCard signal={signal} />
@@ -397,43 +530,42 @@ function SignalBody({ signal }: { signal: TradingSignalResponse }) {
         )}
       </div>
 
-      {/* ── Collapsible analysis ── */}
+      {/* Analysis */}
       {signal.signal !== "WAIT" && <AnalysisSection signal={signal} />}
     </div>
   );
 }
 
-// ─── Exported card with mode switcher ─────────────────────────────────────────
-
+// ─── Exported card ────────────────────────────────────────────────────────────
 export function TradingSignalCard({
-  intradaySignal,
-  swingSignal,
-  isLoadingIntraday,
-  isLoadingSwing,
-  bestOptionsData,
-  isLoadingBestOptions,
-  isBestOptionsError,
-  onRefreshBestOptions,
-  onModeChange,
+  intradaySignal, swingSignal,
+  isLoadingIntraday, isLoadingSwing,
+  bestOptionsData, isLoadingBestOptions, isBestOptionsError,
+  onRefreshBestOptions, onModeChange,
 }: TradingSignalCardProps) {
   const [mode, setMode] = useState<ActiveMode>("intraday");
 
-  // Auto-record wins/losses as price hits levels
   useAutoTrackSignal("intraday", intradaySignal);
-  useAutoTrackSignal("swing", swingSignal);
+  useAutoTrackSignal("swing",    swingSignal);
 
   const handleModeChange = (m: ActiveMode) => {
     setMode(m);
     if (m === "intraday" || m === "swing") onModeChange?.(m);
   };
 
-  const signal = mode === "intraday" ? intradaySignal : mode === "swing" ? swingSignal : undefined;
+  const signal    = mode === "intraday" ? intradaySignal : mode === "swing" ? swingSignal : undefined;
   const isLoading = mode === "intraday" ? isLoadingIntraday : mode === "swing" ? isLoadingSwing : false;
 
+  // Dynamic hint — show current RSI if intraday signal available
+  const intradayRsi = intradaySignal ? getRsiExtra(intradaySignal).rsi : null;
+  const intradayHint = intradayRsi != null
+    ? `ATM/OTM · 0-1 DTE · Premium ≤$2.50 · RSI ${intradayRsi.toFixed(1)} · ATR-based targets`
+    : `ATM/OTM · 0-1 DTE · Premium ≤$2.50 · ATR-based targets`;
+
   const tabs: { key: ActiveMode; label: string; icon: React.ElementType; hint: string }[] = [
-    { key: "intraday", label: "Intraday Scalp", icon: Zap, hint: "ATM · 0-1 DTE · T1 +50% · T2 +150% · Stop −30%" },
+    { key: "intraday", label: "Intraday Scalp", icon: Zap,      hint: intradayHint },
     { key: "swing",    label: "Swing / BTST",   icon: TrendingUp, hint: "OTM · 3-7 DTE · T1 +100% · T2 +300% · Stop −50%" },
-    { key: "best",     label: "Best Options",   icon: Trophy, hint: "Multi-ticker scanner · Live Tradier data" },
+    { key: "best",     label: "Best Options",   icon: Trophy,   hint: "Multi-ticker scanner · Live Tradier data" },
   ];
 
   const activeHint = tabs.find(t => t.key === mode)?.hint ?? "";
@@ -444,7 +576,7 @@ export function TradingSignalCard({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1 p-1 bg-secondary/40 rounded-xl">
           {tabs.map(tab => {
-            const Icon = tab.icon;
+            const Icon     = tab.icon;
             const isActive = mode === tab.key;
             return (
               <button
@@ -464,7 +596,6 @@ export function TradingSignalCard({
             );
           })}
         </div>
-
         <div className="text-[11px] text-muted-foreground/70 bg-secondary/30 px-3 py-1.5 rounded-lg">
           {activeHint}
         </div>
@@ -473,13 +604,7 @@ export function TradingSignalCard({
       {/* Content */}
       <AnimatePresence mode="wait">
         {mode === "best" ? (
-          <motion.div
-            key="best"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
-          >
+          <motion.div key="best" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
             <BestOptionsTab
               data={bestOptionsData}
               isLoading={isLoadingBestOptions ?? false}
@@ -488,33 +613,17 @@ export function TradingSignalCard({
             />
           </motion.div>
         ) : isLoading && !signal ? (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="h-64 rounded-2xl border border-white/5 bg-white/5 animate-pulse flex items-center justify-center"
           >
-            <div className="text-muted-foreground text-sm">
-              Analyzing {mode === "intraday" ? "5-min" : "daily"} bars…
-            </div>
+            <div className="text-muted-foreground text-sm">Analyzing {mode === "intraday" ? "5-min" : "daily"} bars…</div>
           </motion.div>
         ) : signal ? (
-          <motion.div
-            key={mode}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
-          >
+          <motion.div key={mode} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
             <SignalBody signal={signal} />
           </motion.div>
         ) : (
-          <motion.div
-            key="error"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 flex items-center gap-3 text-muted-foreground"
           >
             <AlertCircle className="w-5 h-5 text-destructive/70 flex-shrink-0" />
