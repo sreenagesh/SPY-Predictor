@@ -20,6 +20,7 @@ import { MtfPanel } from "@/components/mtf-panel";
 import { LoadingSpinner } from "@/components/ui-elements";
 import { Scoreboard } from "@/components/scoreboard";
 import { MarketCommentary } from "@/components/market-commentary";
+import { OptionsFlowPanel } from "@/components/options-flow-panel";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<TimePeriod>("6mo");
@@ -130,6 +131,16 @@ export default function Dashboard() {
               isBestOptionsError={bestOptionsError}
               onRefreshBestOptions={() => refetchBestOptions()}
             />
+          </motion.div>
+
+          {/* ── 0DTE Options Flow Panel ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+            className="col-span-1 lg:col-span-12"
+          >
+            <OptionsFlowPanel />
           </motion.div>
 
           {/* ── Main Price Chart ── */}

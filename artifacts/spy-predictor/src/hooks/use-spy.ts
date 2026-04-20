@@ -7,6 +7,7 @@ import {
   useGetMtfAnalysis,
   useGetBestOptions,
 } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 
 export type TimePeriod = "1h" | "1d" | "1w" | "1mo" | "3mo" | "6mo" | "1y" | "2y";
 export const INTRADAY_PERIODS: TimePeriod[] = ["1h", "1d", "1w"];
@@ -99,5 +100,46 @@ export function useBestOptions() {
       refetchOnWindowFocus: true,
       refetchOnMount: true,
     },
+  });
+}
+
+export interface NearAtmOption {
+  strike: number;
+  bid: number;
+  ask: number;
+  volume: number;
+  openInterest: number;
+}
+
+export interface OptionsFlowData {
+  currentPrice: number;
+  expiration: string;
+  signal: "BUY CALL" | "BUY PUT" | "WAIT";
+  signalScore: number;
+  instruction: string;
+  recommendedStrike: number | null;
+  recommendedEntry: number | null;
+  recommendedStop: number | null;
+  nearAtmPcRatio: number;
+  overallPcRatio: number;
+  maxPain: number | null;
+  callWall: number | null;
+  putWall: number | null;
+  calls: NearAtmOption[];
+  puts: NearAtmOption[];
+  scannedAt: string;
+}
+
+export function useOptionsFlow() {
+  return useQuery<OptionsFlowData>({
+    queryKey: ["spy-options-flow"],
+    queryFn: async () => {
+      const res = await fetch("/api/spy/options-flow");
+      if (!res.ok) throw new Error(`options-flow ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    retry: 2,
   });
 }

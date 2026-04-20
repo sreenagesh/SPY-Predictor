@@ -502,4 +502,170 @@ router.get("/best-options", async (req, res) => {
   }
 });
 
+// ─── SPY Options Flow route ───────────────────────────────────────────────────
+
+interface NearAtmOption {
+  strike: number;
+  bid: number;
+  ask: number;
+  volume: number;
+  openInterest: number;
+}
+
+interface OptionsFlowResponse {
+  currentPrice: number;
+  expiration: string;
+  signal: "BUY CALL" | "BUY PUT" | "WAIT";
+  signalScore: number;
+  instruction: string;
+  recommendedStrike: number | null;
+  recommendedEntry: number | null;
+  recommendedStop: number | null;
+  nearAtmPcRatio: number;
+  overallPcRatio: number;
+  maxPain: number | null;
+  callWall: number | null;
+  putWall: number | null;
+  calls: NearAtmOption[];
+  puts: NearAtmOption[];
+  scannedAt: string;
+}
+
+async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
+  // 1. Get SPY quote
+  const quoteData = await tradierGet("/markets/quotes?symbols=SPY&greeks=false");
+  const quote = quoteData?.quotes?.quote;
+  const currentPrice: number = quote?.last ?? quote?.ask ?? 0;
+  if (!currentPrice) throw new Error("Could not fetch SPY price");
+
+  // 2. Get nearest expiration (prefer 0DTE or next day)
+  const expData = await tradierGet("/markets/options/expirations?symbol=SPY&includeAllRoots=false");
+  const expirations: string[] = (() => {
+    const raw = expData?.expirations?.date;
+    if (!raw) return [];
+    return Array.isArray(raw) ? raw : [raw];
+  })();
+  const expiration = expirations[0] ?? null;
+  if (!expiration) throw new Error("No expirations available");
+
+  // 3. Fetch full chain
+  const chain = await fetchChain("SPY", expiration);
+  const calls = chain.filter(o => o.option_type === "call");
+  const puts  = chain.filter(o => o.option_type === "put");
+
+  // 4. Near-ATM 8 strikes each
+  const nearest8Calls = [...calls]
+    .sort((a, b) => Math.abs(a.strike - currentPrice) - Math.abs(b.strike - currentPrice))
+    .slice(0, 8)
+    .sort((a, b) => a.strike - b.strike);
+
+  const nearest8Puts = [...puts]
+    .sort((a, b) => Math.abs(a.strike - currentPrice) - Math.abs(b.strike - currentPrice))
+    .slice(0, 8)
+    .sort((a, b) => b.strike - a.strike);
+
+  const nearCallVol = nearest8Calls.reduce((s, o) => s + (o.volume ?? 0), 0);
+  const nearPutVol  = nearest8Puts.reduce((s, o) => s + (o.volume ?? 0), 0);
+  const nearAtmPcRatio = nearCallVol > 0 ? nearPutVol / nearCallVol : 1;
+
+  const totalCallVol = calls.reduce((s, o) => s + (o.volume ?? 0), 0);
+  const totalPutVol  = puts.reduce((s, o) => s + (o.volume ?? 0), 0);
+  const overallPcRatio = totalCallVol > 0 ? totalPutVol / totalCallVol : 1;
+
+  // 5. Max pain
+  const allStrikes = [...new Set(chain.map(o => o.strike))].sort((a, b) => a - b);
+  let maxPain: number | null = null;
+  let minPainVal = Infinity;
+  for (const s of allStrikes) {
+    const callPain = calls.reduce((sum, o) => sum + Math.max(0, s - o.strike) * (o.open_interest ?? 0), 0);
+    const putPain  = puts.reduce((sum, o) => sum + Math.max(0, o.strike - s) * (o.open_interest ?? 0), 0);
+    const total = callPain + putPain;
+    if (total < minPainVal) { minPainVal = total; maxPain = s; }
+  }
+
+  // 6. Call wall (highest call OI) and put wall (highest put OI)
+  const callWall = calls.reduce((best, o) => (!best || (o.open_interest ?? 0) > (best.open_interest ?? 0)) ? o : best, null as TradierOption | null)?.strike ?? null;
+  const putWall  = puts.reduce((best, o) => (!best || (o.open_interest ?? 0) > (best.open_interest ?? 0)) ? o : best, null as TradierOption | null)?.strike ?? null;
+
+  // 7. Signal scoring
+  let score = 0;
+
+  if (nearAtmPcRatio < 0.80) score += 2;
+  else if (nearAtmPcRatio < 0.95) score += 1;
+  else if (nearAtmPcRatio > 1.25) score -= 2;
+  else if (nearAtmPcRatio > 1.05) score -= 1;
+
+  if (overallPcRatio > 1.30) score -= 1;
+  else if (overallPcRatio < 0.80) score += 1;
+
+  if (maxPain !== null) {
+    if (currentPrice > maxPain + 15) score -= 1;
+    else if (currentPrice < maxPain - 15) score += 1;
+  }
+  if (callWall !== null && callWall - currentPrice < 5) score -= 1;
+  if (putWall  !== null && currentPrice - putWall < 5)  score += 1;
+
+  const signal: OptionsFlowResponse["signal"] = score >= 2 ? "BUY CALL" : score <= -2 ? "BUY PUT" : "WAIT";
+
+  // 8. Recommended contract (ATM)
+  const isCall = signal === "BUY CALL";
+  let recommendedStrike: number | null = null;
+  let recommendedEntry: number | null = null;
+  let recommendedStop: number | null = null;
+  let instruction = "No clear edge — wait for a cleaner setup.";
+
+  if (signal !== "WAIT") {
+    const pool = isCall ? nearest8Calls : nearest8Puts;
+    const atm = pool.reduce((best, o) =>
+      Math.abs(o.strike - currentPrice) < Math.abs(best.strike - currentPrice) ? o : best
+    , pool[0]);
+    if (atm) {
+      recommendedStrike = atm.strike;
+      const mid = (atm.bid + atm.ask) / 2;
+      recommendedEntry = Math.round(mid * 100) / 100;
+      recommendedStop  = Math.round(mid * 0.45 * 100) / 100;
+      const exp = new Date(expiration + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      instruction = `${signal}: SPY $${recommendedStrike} ${isCall ? "CALL" : "PUT"} exp ${exp} — enter ~$${recommendedEntry}, stop at $${recommendedStop}`;
+    }
+  }
+
+  const toNearAtm = (o: TradierOption): NearAtmOption => ({
+    strike: o.strike,
+    bid: o.bid ?? 0,
+    ask: o.ask ?? 0,
+    volume: o.volume ?? 0,
+    openInterest: o.open_interest ?? 0,
+  });
+
+  return {
+    currentPrice,
+    expiration,
+    signal,
+    signalScore: score,
+    instruction,
+    recommendedStrike,
+    recommendedEntry,
+    recommendedStop,
+    nearAtmPcRatio: Math.round(nearAtmPcRatio * 100) / 100,
+    overallPcRatio: Math.round(overallPcRatio * 100) / 100,
+    maxPain,
+    callWall,
+    putWall,
+    calls: nearest8Calls.map(toNearAtm),
+    puts: nearest8Puts.map(toNearAtm),
+    scannedAt: new Date().toISOString(),
+  };
+}
+
+router.get("/spy/options-flow", async (_req, res) => {
+  try {
+    if (!TRADIER_TOKEN) return res.status(503).json({ error: "TRADIER_API_KEY not configured" });
+    const data = await computeOptionsFlow();
+    res.json(data);
+  } catch (err) {
+    console.error("[options-flow]", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Options flow error" });
+  }
+});
+
 export default router;
