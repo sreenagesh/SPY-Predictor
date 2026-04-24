@@ -31,9 +31,10 @@ function fmtP(v?: number) {
 
 function ModeBadge({ mode }: { mode: TradeMode }) {
   const cfg = {
-    intraday: { label: "INTRADAY", cls: "bg-blue-500/15 text-blue-400 border-blue-500/25",  icon: Zap },
-    swing:    { label: "SWING",    cls: "bg-purple-500/15 text-purple-400 border-purple-500/25", icon: TrendingUp },
-    best:     { label: "BEST OPT", cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25", icon: Trophy },
+    intraday:      { label: "INTRADAY",  cls: "bg-blue-500/15 text-blue-400 border-blue-500/25",     icon: Zap },
+    swing:         { label: "SWING",     cls: "bg-purple-500/15 text-purple-400 border-purple-500/25", icon: TrendingUp },
+    best:          { label: "BEST OPT",  cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25", icon: Trophy },
+    "options-flow":{ label: "0DTE FLOW", cls: "bg-orange-500/15 text-orange-400 border-orange-500/25", icon: Target },
   }[mode];
   const Icon = cfg.icon;
   return (
@@ -264,10 +265,11 @@ function exportCSV(records: TradeRecord[]) {
 type FilterMode = "all" | TradeMode;
 
 const FILTER_TABS: { key: FilterMode; label: string; icon: React.ElementType }[] = [
-  { key: "all",      label: "All",          icon: BarChart3 },
-  { key: "intraday", label: "Intraday",     icon: Zap },
-  { key: "swing",    label: "Swing / BTST", icon: TrendingUp },
-  { key: "best",     label: "Best Options", icon: Trophy },
+  { key: "all",          label: "All",           icon: BarChart3 },
+  { key: "intraday",     label: "Intraday",      icon: Zap },
+  { key: "swing",        label: "Swing / BTST",  icon: TrendingUp },
+  { key: "best",         label: "Best Options",  icon: Trophy },
+  { key: "options-flow", label: "0DTE Options",  icon: Target },
 ];
 
 export default function History() {
@@ -280,8 +282,8 @@ export default function History() {
   useEffect(() => { reload(); }, []);
 
   const scores     = getAllScores();
-  const allWins    = scores.intraday.wins   + scores.swing.wins   + scores.best.wins;
-  const allLosses  = scores.intraday.losses + scores.swing.losses + scores.best.losses;
+  const allWins    = scores.intraday.wins   + scores.swing.wins   + scores.best.wins   + scores.optionsFlow.wins;
+  const allLosses  = scores.intraday.losses + scores.swing.losses + scores.best.losses + scores.optionsFlow.losses;
   const allTotal   = allWins + allLosses;
   const allWinRate = allTotal > 0 ? Math.round((allWins / allTotal) * 100) : 0;
 
@@ -311,15 +313,16 @@ export default function History() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3"
+        className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3"
       >
         <StatCard label="Total Trades" value={allTotal} />
         <StatCard label="Overall Wins"   value={allWins}    color="text-emerald-400" />
         <StatCard label="Overall Losses" value={allLosses}  color="text-red-400" />
         <StatCard label="Win Rate"       value={allTotal > 0 ? `${allWinRate}%` : "—"} color={allWinRate >= 60 ? "text-emerald-400" : allWinRate >= 40 ? "text-amber-400" : "text-muted-foreground"} />
-        <StatCard label="Intraday"  value={`${scores.intraday.wins}W / ${scores.intraday.losses}L`}  sub={scores.intraday.total > 0 ? `${scores.intraday.winRate}% win` : undefined} />
-        <StatCard label="Swing"     value={`${scores.swing.wins}W / ${scores.swing.losses}L`}         sub={scores.swing.total > 0 ? `${scores.swing.winRate}% win` : undefined} />
-        <StatCard label="Best Opt." value={`${scores.best.wins}W / ${scores.best.losses}L`}           sub={scores.best.total > 0 ? `${scores.best.winRate}% win` : undefined} />
+        <StatCard label="Intraday"    value={`${scores.intraday.wins}W / ${scores.intraday.losses}L`}         sub={scores.intraday.total > 0 ? `${scores.intraday.winRate}% win` : undefined} />
+        <StatCard label="Swing"       value={`${scores.swing.wins}W / ${scores.swing.losses}L`}               sub={scores.swing.total > 0 ? `${scores.swing.winRate}% win` : undefined} />
+        <StatCard label="Best Opt."   value={`${scores.best.wins}W / ${scores.best.losses}L`}                 sub={scores.best.total > 0 ? `${scores.best.winRate}% win` : undefined} />
+        <StatCard label="0DTE Flow"   value={`${scores.optionsFlow.wins}W / ${scores.optionsFlow.losses}L`}   sub={scores.optionsFlow.total > 0 ? `${scores.optionsFlow.winRate}% win` : undefined} />
       </motion.div>
 
       {/* Filter + action bar */}

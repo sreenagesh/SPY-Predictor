@@ -114,11 +114,21 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          {/* ── Trading Signal — CALL/PUT Mode Switcher (top priority) ── */}
+          {/* ── 0DTE Options Flow Panel — top priority ── */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+            className="col-span-1 lg:col-span-12"
+          >
+            <OptionsFlowPanel />
+          </motion.div>
+
+          {/* ── Trading Signal ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
             className="col-span-1 lg:col-span-12"
           >
             <TradingSignalCard
@@ -131,16 +141,6 @@ export default function Dashboard() {
               isBestOptionsError={bestOptionsError}
               onRefreshBestOptions={() => refetchBestOptions()}
             />
-          </motion.div>
-
-          {/* ── 0DTE Options Flow Panel ── */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.05 }}
-            className="col-span-1 lg:col-span-12"
-          >
-            <OptionsFlowPanel />
           </motion.div>
 
           {/* ── Main Price Chart ── */}

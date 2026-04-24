@@ -521,6 +521,12 @@ interface OptionsFlowResponse {
   recommendedStrike: number | null;
   recommendedEntry: number | null;
   recommendedStop: number | null;
+  // OI-wall based SPY price targets
+  t1SpyPrice: number | null;
+  t2SpyPrice: number | null;
+  // Estimated option premium at those SPY levels (delta ~0.5 ATM approximation)
+  t1Premium: number | null;
+  t2Premium: number | null;
   nearAtmPcRatio: number;
   overallPcRatio: number;
   maxPain: number | null;
@@ -607,11 +613,17 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
 
   const signal: OptionsFlowResponse["signal"] = score >= 2 ? "BUY CALL" : score <= -2 ? "BUY PUT" : "WAIT";
 
-  // 8. Recommended contract (ATM)
+  // 8. Recommended contract (ATM) + OI-wall targets
   const isCall = signal === "BUY CALL";
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
   let recommendedStrike: number | null = null;
   let recommendedEntry: number | null = null;
   let recommendedStop: number | null = null;
+  let t1SpyPrice: number | null = null;
+  let t2SpyPrice: number | null = null;
+  let t1Premium: number | null = null;
+  let t2Premium: number | null = null;
   let instruction = "No clear edge — wait for a cleaner setup.";
 
   if (signal !== "WAIT") {
@@ -619,13 +631,39 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
     const atm = pool.reduce((best, o) =>
       Math.abs(o.strike - currentPrice) < Math.abs(best.strike - currentPrice) ? o : best
     , pool[0]);
+
     if (atm) {
       recommendedStrike = atm.strike;
       const mid = (atm.bid + atm.ask) / 2;
-      recommendedEntry = Math.round(mid * 100) / 100;
-      recommendedStop  = Math.round(mid * 0.45 * 100) / 100;
+      recommendedEntry = round2(mid);
+      recommendedStop  = round2(mid * 0.45);
+
+      // OI-wall SPY price targets
+      // CALL: T1 = callWall, T2 = callWall + (callWall - currentPrice) * 0.5 (extended move)
+      // PUT:  T1 = putWall,  T2 = maxPain (gravitational pull) or putWall - 5
+      if (isCall) {
+        t1SpyPrice = callWall;
+        t2SpyPrice = callWall !== null ? round2(callWall + (callWall - currentPrice) * 0.3) : null;
+      } else {
+        t1SpyPrice = putWall;
+        t2SpyPrice = maxPain ?? (putWall !== null ? round2(putWall - 5) : null);
+      }
+
+      // Estimated premium at target using delta ~0.5 (ATM approximation)
+      // Premium gain ≈ |SPY move| × 0.5; add to entry premium
+      const DELTA = 0.5;
+      if (t1SpyPrice !== null && recommendedEntry !== null) {
+        const move1 = Math.abs(t1SpyPrice - currentPrice);
+        t1Premium = round2(recommendedEntry + move1 * DELTA);
+      }
+      if (t2SpyPrice !== null && recommendedEntry !== null) {
+        const move2 = Math.abs(t2SpyPrice - currentPrice);
+        t2Premium = round2(recommendedEntry + move2 * DELTA);
+      }
+
       const exp = new Date(expiration + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-      instruction = `${signal}: SPY $${recommendedStrike} ${isCall ? "CALL" : "PUT"} exp ${exp} — enter ~$${recommendedEntry}, stop at $${recommendedStop}`;
+      const t1Str = t1SpyPrice ? ` | T1: SPY $${t1SpyPrice} (~$${t1Premium})` : "";
+      instruction = `${signal}: SPY $${recommendedStrike} ${isCall ? "CALL" : "PUT"} exp ${exp} — enter ~$${recommendedEntry}, stop $${recommendedStop}${t1Str}`;
     }
   }
 
@@ -646,6 +684,10 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
     recommendedStrike,
     recommendedEntry,
     recommendedStop,
+    t1SpyPrice,
+    t2SpyPrice,
+    t1Premium,
+    t2Premium,
     nearAtmPcRatio: Math.round(nearAtmPcRatio * 100) / 100,
     overallPcRatio: Math.round(overallPcRatio * 100) / 100,
     maxPain,

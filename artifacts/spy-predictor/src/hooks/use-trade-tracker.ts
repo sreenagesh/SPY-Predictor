@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 
 export type TradeOutcome = "T1" | "T2" | "SL" | "open";
-export type TradeMode = "intraday" | "swing" | "best";
+export type TradeMode = "intraday" | "swing" | "best" | "options-flow";
 
 export interface TradeDetails {
   strike?: number;
@@ -69,9 +69,10 @@ export function getScoreCounts(mode: TradeMode): { wins: number; losses: number;
 
 export function getAllScores() {
   return {
-    intraday: getScoreCounts("intraday"),
-    swing:    getScoreCounts("swing"),
-    best:     getScoreCounts("best"),
+    intraday:     getScoreCounts("intraday"),
+    swing:        getScoreCounts("swing"),
+    best:         getScoreCounts("best"),
+    optionsFlow:  getScoreCounts("options-flow"),
   };
 }
 

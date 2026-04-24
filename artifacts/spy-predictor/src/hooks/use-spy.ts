@@ -120,6 +120,10 @@ export interface OptionsFlowData {
   recommendedStrike: number | null;
   recommendedEntry: number | null;
   recommendedStop: number | null;
+  t1SpyPrice: number | null;
+  t2SpyPrice: number | null;
+  t1Premium: number | null;
+  t2Premium: number | null;
   nearAtmPcRatio: number;
   overallPcRatio: number;
   maxPain: number | null;
