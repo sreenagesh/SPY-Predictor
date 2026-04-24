@@ -491,14 +491,14 @@ router.get("/best-options", async (req, res) => {
 
     // No cache yet or force refresh — wait for the scan (first boot scenario)
     const result = await getScanResult(force);
-    res.json(result);
+    return res.json(result);
   } catch (err) {
     console.error("[best-options]", err);
     // Return stale cache if available rather than a hard error
     if (cache) {
       return res.json({ ...cache.data, fromCache: true, error: "Scan failed, showing last known data" });
     }
-    res.status(500).json({ error: err instanceof Error ? err.message : "Scanner error" });
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Scanner error" });
   }
 });
 
@@ -703,10 +703,10 @@ router.get("/spy/options-flow", async (_req, res) => {
   try {
     if (!TRADIER_TOKEN) return res.status(503).json({ error: "TRADIER_API_KEY not configured" });
     const data = await computeOptionsFlow();
-    res.json(data);
+    return res.json(data);
   } catch (err) {
     console.error("[options-flow]", err);
-    res.status(500).json({ error: err instanceof Error ? err.message : "Options flow error" });
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Options flow error" });
   }
 });
 
