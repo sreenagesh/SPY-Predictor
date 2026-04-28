@@ -2,10 +2,10 @@ import React, { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle,
-  Zap, Shield, Target, ArrowRight, Clock,
+  Zap, Shield, Target, ArrowRight, Clock, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useOptionsFlow, type OptionsFlowData, type NearAtmOption } from "@/hooks/use-spy";
+import { useOptionsFlow, useGex, type OptionsFlowData, type NearAtmOption, type GexData } from "@/hooks/use-spy";
 
 // ─── localStorage recording ───────────────────────────────────────────────────
 
@@ -161,10 +161,87 @@ function TargetRow({ label, spyPrice, premium, color, icon }: {
   );
 }
 
+// ─── GEX helpers ─────────────────────────────────────────────────────────────
+
+function fmtGex(n: number): string {
+  const sign = n >= 0 ? "+" : "-";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000)     return `${sign}$${(abs / 1_000_000).toFixed(0)}M`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+// ─── Gamma Guidance section ───────────────────────────────────────────────────
+
+function GammaGuidanceSection({ gex }: { gex: GexData }) {
+  const biasColor =
+    gex.guidanceBias === "bull"
+      ? "bg-bullish/5 border-bullish/20 text-bullish/90"
+      : gex.guidanceBias === "bear"
+      ? "bg-bearish/5 border-bearish/20 text-bearish/90"
+      : "bg-white/5 border-white/10 text-muted-foreground";
+
+  const gexColor = gex.totalGex >= 0 ? "text-bullish" : "text-bearish";
+
+  return (
+    <div className="border-t border-white/10 pt-4 space-y-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 flex items-center gap-1.5">
+          <Activity className="w-3 h-3" /> Gamma Guidance
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-black/30 border border-white/10 text-muted-foreground/60 uppercase font-mono tracking-wider">
+            {gex.regime}
+          </span>
+          <span className={cn("font-mono font-bold text-xs", gexColor)}>
+            {fmtGex(gex.totalGex)} GEX
+          </span>
+        </div>
+      </div>
+
+      {/* Guidance text */}
+      <div className={cn("rounded-xl border p-3 text-xs leading-relaxed", biasColor)}>
+        {gex.guidance}
+      </div>
+
+      {/* Key GEX levels */}
+      <div className="flex flex-wrap gap-2">
+        {gex.gammaFlip !== null && (
+          <StatPill
+            label="Gamma Flip"
+            value={`$${gex.gammaFlip}`}
+            highlight={gex.aboveFlip ? "bull" : "bear"}
+          />
+        )}
+        <StatPill
+          label="GEX Regime"
+          value={gex.totalGex >= 0 ? "Long Gamma" : "Short Gamma"}
+          highlight={gex.totalGex >= 0 ? "bull" : "bear"}
+        />
+        {gex.callWall !== null && (
+          <StatPill label="Call Wall (γ)" value={`$${gex.callWall}`} highlight="bear" />
+        )}
+        {gex.putWall !== null && (
+          <StatPill label="Put Wall (γ)" value={`$${gex.putWall}`} highlight="bull" />
+        )}
+        {gex.maxPain !== null && (
+          <StatPill label="Max Pain (γ)" value={`$${gex.maxPain}`} />
+        )}
+      </div>
+
+      <div className="text-[10px] text-muted-foreground/30 text-right">
+        GEX · {new Date(gex.scannedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export function OptionsFlowPanel() {
   const { data, isLoading, isError, refetch, isFetching } = useOptionsFlow();
+  const { data: gexData, isLoading: gexLoading, isError: gexError } = useGex();
   const prevSignalRef = useRef<string>("WAIT");
 
   // Auto-record to localStorage when signal fires (WAIT → BUY)
@@ -364,6 +441,19 @@ export function OptionsFlowPanel() {
               <div className="w-px bg-white/10 flex-shrink-0" />
               <ChainTable options={data.puts}  currentPrice={data.currentPrice} isCall={false} label="Puts" />
             </div>
+
+            {/* ── Gamma Guidance ── */}
+            {gexLoading && (
+              <div className="border-t border-white/10 pt-4 text-xs text-muted-foreground/40 flex items-center gap-2">
+                <Activity className="w-3 h-3 animate-pulse" /> Loading gamma data…
+              </div>
+            )}
+            {gexError && (
+              <div className="border-t border-white/10 pt-4 text-[10px] text-muted-foreground/30 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3" /> Gamma Guidance unavailable — check TRADIER_API_KEY
+              </div>
+            )}
+            {gexData && !gexLoading && <GammaGuidanceSection gex={gexData} />}
 
             {/* Footer */}
             <div className="text-[10px] text-muted-foreground/40 text-right">

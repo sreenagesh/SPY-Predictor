@@ -103,6 +103,47 @@ export function useBestOptions() {
   });
 }
 
+// ─── GEX ─────────────────────────────────────────────────────────────────────
+
+export interface PerStrikeGex {
+  strike: number;
+  netGex: number;
+  callGex: number;
+  putGex: number;
+  callOi: number;
+  putOi: number;
+}
+
+export interface GexData {
+  totalGex: number;
+  gammaFlip: number | null;
+  currentPrice: number;
+  expiration: string;
+  regime: "0dte" | "1dte";
+  aboveFlip: boolean;
+  callWall: number | null;
+  putWall: number | null;
+  maxPain: number | null;
+  perStrike: PerStrikeGex[];
+  guidance: string;
+  guidanceBias: "bull" | "bear" | "neutral";
+  scannedAt: string;
+}
+
+export function useGex() {
+  return useQuery<GexData>({
+    queryKey: ["spy-gex"],
+    queryFn: async () => {
+      const res = await fetch("/api/spy/gex");
+      if (!res.ok) throw new Error(`gex ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    retry: 2,
+  });
+}
+
 export interface NearAtmOption {
   strike: number;
   bid: number;
