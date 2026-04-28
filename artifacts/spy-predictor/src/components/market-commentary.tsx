@@ -3,7 +3,10 @@ import { motion } from "framer-motion";
 import {
   MessageSquare, TrendingUp, TrendingDown, Minus, AlertTriangle,
   CheckCircle, Clock, Activity, Ban, TrendingDown as TrendDown,
+  Zap,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { GexData } from "@/hooks/use-spy";
 
 interface MtfTf {
   tf: string; score: number; trend: string;
@@ -42,6 +45,7 @@ interface Props {
   mtfData?: MtfData | null;
   intradaySignal?: IntradaySignal | null;
   swingSignal?: SwingSignal | null;
+  gexData?: GexData | null;
   isLoading?: boolean;
 }
 
@@ -144,7 +148,7 @@ function RsiAlertInline({
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function MarketCommentary({ mtfData, intradaySignal, swingSignal, isLoading }: Props) {
+export function MarketCommentary({ mtfData, intradaySignal, swingSignal, gexData, isLoading }: Props) {
   if (isLoading || (!mtfData && !intradaySignal)) {
     return (
       <div className="glass-panel rounded-2xl p-4 animate-pulse">
@@ -405,6 +409,80 @@ export function MarketCommentary({ mtfData, intradaySignal, swingSignal, isLoadi
               })}
             </div>
           )}
+          {/* ── Gamma Guidance ── */}
+          {gexData && (
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] text-xs overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b border-white/5">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground/70">
+                  <Zap className="w-3 h-3 text-primary/60" /> Gamma Guidance
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-black/30 border border-white/10 text-muted-foreground/60 uppercase font-mono tracking-wider">
+                    {gexData.regime}
+                  </span>
+                  <span className={cn("font-mono font-bold text-[10px]", gexData.totalGex >= 0 ? "text-bullish" : "text-bearish")}>
+                    {gexData.totalGex >= 0 ? "+" : ""}
+                    {Math.abs(gexData.totalGex) >= 1_000_000_000
+                      ? `$${(Math.abs(gexData.totalGex) / 1_000_000_000).toFixed(1)}B`
+                      : `$${(Math.abs(gexData.totalGex) / 1_000_000).toFixed(0)}M`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Key GEX levels */}
+              <div className="px-3 py-2 space-y-1.5">
+                {gexData.gammaFlip !== null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground/70">Gamma Flip</span>
+                    <span className={cn("font-mono font-bold", gexData.aboveFlip ? "text-bullish" : "text-bearish")}>
+                      ${gexData.gammaFlip}
+                      <span className="ml-1 text-[9px] font-normal opacity-60">
+                        {gexData.aboveFlip ? "▲ above" : "▼ below"}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                {gexData.callWall !== null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground/70">Call Wall</span>
+                    <span className="font-mono font-bold text-bearish/80">${gexData.callWall}</span>
+                  </div>
+                )}
+                {gexData.putWall !== null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground/70">Put Wall</span>
+                    <span className="font-mono font-bold text-bullish/80">${gexData.putWall}</span>
+                  </div>
+                )}
+                {gexData.maxPain !== null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground/70">Max Pain</span>
+                    <span className="font-mono font-bold text-muted-foreground">${gexData.maxPain}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground/70">GEX Regime</span>
+                  <span className={cn("font-bold text-[10px]", gexData.totalGex >= 0 ? "text-bullish" : "text-bearish")}>
+                    {gexData.totalGex >= 0 ? "Long Gamma ↔ stabilizing" : "Short Gamma ↕ amplifying"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Guidance text */}
+              <div className={cn(
+                "mx-3 mb-3 rounded-lg border p-2.5 leading-relaxed",
+                gexData.guidanceBias === "bull"
+                  ? "bg-bullish/5 border-bullish/20 text-bullish/80"
+                  : gexData.guidanceBias === "bear"
+                  ? "bg-bearish/5 border-bearish/20 text-bearish/80"
+                  : "bg-white/3 border-white/8 text-muted-foreground/80",
+              )}>
+                {gexData.guidance}
+              </div>
+            </div>
+          )}
+
           {swingSignal?.wyckoff?.phase && (
             <div className="rounded-xl p-3 border border-white/5 bg-white/[0.02] text-xs">
               <span className="text-muted-foreground/70">Wyckoff (daily): </span>
