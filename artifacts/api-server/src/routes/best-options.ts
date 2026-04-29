@@ -9,6 +9,31 @@ import {
 const router = Router();
 const yf = new YahooFinanceClass();
 
+// ── Market hours helpers (ET) ─────────────────────────────────────────────────
+
+function etTotalMinutes(): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const min  = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + min;
+}
+
+// SPY/ETF options window: 9:00 AM – 4:16 PM ET
+function isMarketClosed(): boolean {
+  const t = etTotalMinutes();
+  return t < 9 * 60 || t >= 16 * 60 + 16;
+}
+
+// Switch to 1DTE expiry after 3:45 PM ET
+function isAfter345pmET(): boolean {
+  return etTotalMinutes() >= 15 * 60 + 45;
+}
+
 const TRADIER_TOKEN = process.env.TRADIER_API_KEY;
 const TRADIER_BASE = "https://api.tradier.com/v1";
 
@@ -534,10 +559,31 @@ interface OptionsFlowResponse {
   putWall: number | null;
   calls: NearAtmOption[];
   puts: NearAtmOption[];
+  regime: "0dte" | "1dte";
+  marketClosed: boolean;
   scannedAt: string;
 }
 
+let lastOptionsFlow: OptionsFlowResponse | null = null;
+
 async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
+  // Return cached result outside trading hours (9:00 AM – 4:16 PM ET)
+  if (isMarketClosed()) {
+    if (lastOptionsFlow) return { ...lastOptionsFlow, marketClosed: true };
+    return {
+      currentPrice: 0, expiration: "", signal: "WAIT", signalScore: 0,
+      instruction: "Market closed. Check back at 9:00 AM ET.",
+      recommendedStrike: null, recommendedEntry: null, recommendedStop: null,
+      t1SpyPrice: null, t2SpyPrice: null, t1Premium: null, t2Premium: null,
+      nearAtmPcRatio: 1, overallPcRatio: 1, maxPain: null,
+      callWall: null, putWall: null, calls: [], puts: [],
+      regime: "0dte", marketClosed: true, scannedAt: new Date().toISOString(),
+    };
+  }
+
+  const use1dte = isAfter345pmET();
+  const regime: "0dte" | "1dte" = use1dte ? "1dte" : "0dte";
+
   // 1. Get SPY quote
   const quoteData = await tradierGet("/markets/quotes?symbols=SPY&greeks=false");
   const quote = quoteData?.quotes?.quote;
@@ -551,7 +597,9 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
     if (!raw) return [];
     return Array.isArray(raw) ? raw : [raw];
   })();
-  const expiration = expirations[0] ?? null;
+  const expiration = use1dte
+    ? (expirations[1] ?? expirations[0] ?? null)
+    : (expirations[0] ?? null);
   if (!expiration) throw new Error("No expirations available");
 
   // 3. Fetch full chain
@@ -675,7 +723,7 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
     openInterest: o.open_interest ?? 0,
   });
 
-  return {
+  const result: OptionsFlowResponse = {
     currentPrice,
     expiration,
     signal,
@@ -695,8 +743,12 @@ async function computeOptionsFlow(): Promise<OptionsFlowResponse> {
     putWall,
     calls: nearest8Calls.map(toNearAtm),
     puts: nearest8Puts.map(toNearAtm),
+    regime,
+    marketClosed: false,
     scannedAt: new Date().toISOString(),
   };
+  lastOptionsFlow = result;
+  return result;
 }
 
 router.get("/spy/options-flow", async (_req, res) => {

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle,
@@ -209,8 +209,8 @@ function GammaGuidanceSection({ gex }: { gex: GexData }) {
       <div className="flex flex-wrap gap-2">
         {gex.gammaFlip !== null && (
           <StatPill
-            label="Gamma Flip"
-            value={`$${gex.gammaFlip}`}
+            label={gex.isFlipEstimated ? "Gamma Flip (est)" : "Gamma Flip"}
+            value={`${gex.isFlipEstimated ? "~" : ""}$${gex.gammaFlip}`}
             highlight={gex.aboveFlip ? "bull" : "bear"}
           />
         )}
@@ -244,13 +244,22 @@ export function OptionsFlowPanel() {
   const { data: gexData, isLoading: gexLoading, isError: gexError } = useGex();
   const prevSignalRef = useRef<string>("WAIT");
 
-  // Auto-record to localStorage when signal fires (WAIT → BUY)
+  // Frozen snapshot: price + time + expiry captured the moment signal fires
+  const [proposedSnapshot, setProposedSnapshot] = useState<{
+    price: number; at: string; expiry: string;
+  } | null>(null);
+
+  // Auto-record to localStorage when signal fires (WAIT → BUY); freeze snapshot
   useEffect(() => {
     if (!data) return;
     const prev = prevSignalRef.current;
     const curr = data.signal;
     if (curr !== "WAIT" && prev === "WAIT") {
+      setProposedSnapshot({ price: data.currentPrice, at: data.scannedAt, expiry: data.expiration });
       recordOptionsFlowSignal(data);
+    }
+    if (curr === "WAIT" && prev !== "WAIT") {
+      setProposedSnapshot(null);
     }
     prevSignalRef.current = curr;
   }, [data?.scannedAt, data?.signal]);
@@ -278,7 +287,7 @@ export function OptionsFlowPanel() {
         {/* ── Header ── */}
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-            <Zap className="w-4 h-4 text-primary" /> 0DTE Options Flow
+            <Zap className="w-4 h-4 text-primary" /> {(data?.regime ?? "0dte").toUpperCase()} Options Flow
           </h2>
           <button
             onClick={() => refetch()}
@@ -311,22 +320,27 @@ export function OptionsFlowPanel() {
                 <span className="text-muted-foreground/60 uppercase tracking-wider text-[10px]">SPY</span>
                 <span className="font-mono font-black text-lg text-foreground">${fmt(data.currentPrice)}</span>
               </div>
-              {signal !== "WAIT" && (
+              {data.marketClosed && (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-400">
+                  Market Closed
+                </span>
+              )}
+              {signal !== "WAIT" && proposedSnapshot && (
                 <>
                   <div className="w-px h-4 bg-white/10" />
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60 text-[10px]">Proposed at</span>
-                    <span className="font-mono font-bold text-foreground">${fmt(data.currentPrice)}</span>
+                    <span className="font-mono font-bold text-foreground">${fmt(proposedSnapshot.price)}</span>
                   </div>
                 </>
               )}
               <div className="w-px h-4 bg-white/10" />
               <div className="flex items-center gap-1.5 text-muted-foreground/60">
                 <Clock className="w-3 h-3" />
-                <span>{fmtTime(data.scannedAt)}</span>
+                <span>{signal !== "WAIT" && proposedSnapshot ? fmtTime(proposedSnapshot.at) : fmtTime(data.scannedAt)}</span>
               </div>
               <div className="w-px h-4 bg-white/10" />
-              <span className="text-muted-foreground/50">Exp: {fmtExp(data.expiration)}</span>
+              <span className="text-muted-foreground/50">Exp: {signal !== "WAIT" && proposedSnapshot ? fmtExp(proposedSnapshot.expiry) : fmtExp(data.expiration)}</span>
             </div>
 
             {/* ── Big signal + instruction ── */}

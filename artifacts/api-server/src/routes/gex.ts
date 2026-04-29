@@ -139,6 +139,7 @@ interface PerStrikeGex {
 interface GexResult {
   totalGex: number;
   gammaFlip: number | null;
+  isFlipEstimated: boolean;
   currentPrice: number;
   expiration: string;
   regime: "0dte" | "1dte";
@@ -214,9 +215,12 @@ async function computeGex(): Promise<GexResult> {
   // 5. Total GEX
   const totalGex = perStrikeAll.reduce((sum, s) => sum + s.netGex, 0);
 
-  // 6. Gamma Flip — sweep high→low, find where cumulative GEX crosses zero
+  // 6. Gamma Flip — sweep high→low, find where cumulative GEX crosses zero.
+  // Fallback: if no exact crossing exists, use the strike where cumulative GEX
+  // is closest to zero (nearest-approach estimate).
   let cumGex = 0;
   let gammaFlip: number | null = null;
+  let isFlipEstimated = false;
   for (const s of perStrikeAll) {
     const prev = cumGex;
     cumGex += s.netGex;
@@ -224,6 +228,19 @@ async function computeGex(): Promise<GexResult> {
       gammaFlip = s.strike;
       break;
     }
+  }
+  if (gammaFlip === null && perStrikeAll.length > 0) {
+    let runningCum = 0;
+    let closestDist = Infinity;
+    for (const s of perStrikeAll) {
+      runningCum += s.netGex;
+      const dist = Math.abs(runningCum);
+      if (dist < closestDist) {
+        closestDist = dist;
+        gammaFlip = s.strike;
+      }
+    }
+    isFlipEstimated = true;
   }
 
   // 7. Call Wall (highest call OI)
@@ -278,6 +295,7 @@ async function computeGex(): Promise<GexResult> {
   return {
     totalGex,
     gammaFlip,
+    isFlipEstimated,
     currentPrice,
     expiration,
     regime,

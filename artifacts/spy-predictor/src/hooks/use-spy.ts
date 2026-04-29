@@ -117,6 +117,7 @@ export interface PerStrikeGex {
 export interface GexData {
   totalGex: number;
   gammaFlip: number | null;
+  isFlipEstimated: boolean;
   currentPrice: number;
   expiration: string;
   regime: "0dte" | "1dte";
@@ -172,6 +173,8 @@ export interface OptionsFlowData {
   putWall: number | null;
   calls: NearAtmOption[];
   puts: NearAtmOption[];
+  regime: "0dte" | "1dte";
+  marketClosed: boolean;
   scannedAt: string;
 }
 
@@ -183,7 +186,8 @@ export function useOptionsFlow() {
       if (!res.ok) throw new Error(`options-flow ${res.status}`);
       return res.json();
     },
-    refetchInterval: 5 * 60 * 1000,
+    refetchInterval: (query) =>
+      query.state.data?.marketClosed ? false : 5 * 60 * 1000,
     staleTime: 60 * 1000,
     retry: 2,
   });
