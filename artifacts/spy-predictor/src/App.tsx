@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import History from "@/pages/history";
+import Scanner from "@/pages/scanner";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/history" component={History} />
+        <Route path="/scanner" component={Scanner} />
         {/* Map other generic routes to Dashboard for demo completeness, normally they'd be separate components */}
         <Route path="/analysis" component={Dashboard} />
         <Route path="/models" component={Dashboard} />

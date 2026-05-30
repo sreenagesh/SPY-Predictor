@@ -20,6 +20,7 @@ import type {
   HealthStatus,
   MtfAnalysisResponse,
   OptionsSignalResponse,
+  ScannerResponse,
   SpyDataResponse,
   SpyPredictionResponse,
   TradingSignalResponse,
@@ -583,4 +584,61 @@ export function useGetBestOptions<
     queryKey: QueryKey;
   };
   return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// ─── Breakout / Breakdown Scanner ─────────────────────────────────────────
+
+export const getGetScannerUrl = () => `/api/scanner`;
+
+export const getScanner = async (
+  options?: RequestInit,
+): Promise<ScannerResponse> => {
+  return customFetch<ScannerResponse>(getGetScannerUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetScannerQueryKey = () =>
+  [`/api/scanner`] as const;
+
+export const getGetScannerQueryOptions = <
+  TData = Awaited<ReturnType<typeof getScanner>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getScanner>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetScannerQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getScanner>>
+  > = ({ signal }) => getScanner({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getScanner>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetScanner<
+  TData = Awaited<ReturnType<typeof getScanner>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getScanner>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetScannerQueryOptions(options);
+  const scannerQuery = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+  return { ...scannerQuery, queryKey: queryOptions.queryKey };
 }

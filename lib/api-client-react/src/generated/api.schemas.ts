@@ -414,6 +414,25 @@ export interface BestOptionsResponse {
   marketOpen: boolean;
 }
 
+export interface ScannerStock {
+  ticker: string;
+  price: number;
+  priceChangePct: number;
+  rsi: number;
+  macdHist: number;
+  macdHistPrev: number;
+  volumeRatio: number;
+  signal: "breakout" | "breakdown";
+  strength: number;
+}
+
+export interface ScannerResponse {
+  breakouts: ScannerStock[];
+  breakdowns: ScannerStock[];
+  scannedAt: string;
+  totalScanned: number;
+}
+
 export type GetSpyDataParams = {
   /**
    * Time period for historical data

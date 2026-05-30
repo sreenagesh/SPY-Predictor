@@ -5,6 +5,7 @@ import optionsRouter from "./options";
 import tradingRouter from "./trading";
 import bestOptionsRouter from "./best-options";
 import gexRouter from "./gex";
+import scannerRouter from "./scanner";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(optionsRouter);
 router.use(tradingRouter);
 router.use(bestOptionsRouter);
 router.use(gexRouter);
+router.use(scannerRouter);
 
 export default router;

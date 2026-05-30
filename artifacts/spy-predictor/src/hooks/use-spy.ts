@@ -6,6 +6,7 @@ import {
   useGetSwingSignal,
   useGetMtfAnalysis,
   useGetBestOptions,
+  useGetScanner,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -190,5 +191,17 @@ export function useOptionsFlow() {
       query.state.data?.marketClosed ? false : 5 * 60 * 1000,
     staleTime: 60 * 1000,
     retry: 2,
+  });
+}
+
+export type ScannerInterval = 5 | 15 | 30 | 45 | 60; // minutes
+
+export function useScanner(intervalMin: ScannerInterval = 15) {
+  return useGetScanner({
+    query: {
+      refetchInterval: intervalMin * 60 * 1000,
+      staleTime: 15 * 60 * 1000, // always 15min server cache
+      retry: 2,
+    },
   });
 }
